@@ -1,0 +1,714 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Longview</title>
+<link rel="stylesheet" href="/static/style.css?v=40">
+</head>
+<body class="at-landing">
+<div id="landing">
+  <div class="l-page">
+    <header class="l-top">
+      <div class="l-brand"><span class="l-mark" aria-hidden="true"></span>Longview</div>
+      <a class="l-btn tiny" href="#docs" data-l="docs">Docs</a>
+    </header>
+
+    <section class="l-hero">
+      <p class="eyebrow">The filings, decoded</p>
+      <h1 class="l-title">Longview</h1>
+      <p class="l-sub">Where the world's largest investors actually bought, sold, and held — read straight from the 13F filings. Where your own portfolio actually stands. And where your own strategy would have stood, traded day by day on real history.</p>
+      <div class="l-ctas">
+        <button id="l-enter" class="l-btn" type="button">Open the app</button>
+        <a class="l-btn ghost" href="#docs" data-l="docs">Self-host it</a>
+      </div>
+      <p class="l-hint">or press Enter — no account, no install, no tracking</p>
+    </section>
+
+    <section class="l-grid3">
+      <div class="l-card">
+        <h3>Smart money</h3>
+        <p>Eleven funds, every 13F filing, one view. Where they agree, where they diverge, what changed this quarter — the numbers first, the model's reading second, and you can tell the model exactly what to ask.</p>
+      </div>
+      <div class="l-card">
+        <h3>Risk desk</h3>
+        <p>Your portfolio marked to live prices: weights, a year's return, the size of the swings, and one keystroke of AI to rebalance the way you'd want to — a plan you approve, line by line.</p>
+      </div>
+      <div class="l-card">
+        <h3>Backtest lab</h3>
+        <p>Write a strategy in a form, or in your own words. Longview trades it day by day across five to twenty years of real market data — no lookahead, no survivorship, and a verdict you can audit decision by decision.</p>
+      </div>
+    </section>
+
+    <section class="l-byo">
+      <div>
+        <p class="eyebrow l-eyebrow">Bring your own key</p>
+        <h2>Every AI feature runs on your model</h2>
+        <p class="l-sub2">Any OpenAI-compatible endpoint works — OpenAI itself, a hosted one, or your own server. The key is the only thing you supply.</p>
+      </div>
+      <ol class="l-steps">
+        <li><b>Open Settings.</b><span>Paste the base URL, key, and model name of whatever endpoint you use.</span></li>
+        <li><b>Test it.</b><span>One small call proves the connection and tells you which model is really answering.</span></li>
+        <li><b>Use everything.</b><span>The ask, the fills, the AI backtest, the notes — all of it, on your key.</span></li>
+      </ol>
+    </section>
+
+    <section class="l-rules">
+      <div><b>No login.</b><span>Everything is per-browser; your state lives in this browser.</span></div>
+      <div><b>No lookahead.</b><span>A backtest only ever sees what was known that day.</span></div>
+      <div><b>Open source.</b><span>One repository, MIT licensed — run it on your own machine.</span></div>
+      <div><b>Your key, relayed, never stored.</b><span>It rides each request to your endpoint and is forgotten.</span></div>
+    </section>
+
+    <section class="l-host">
+      <div>
+        <h2>Self-host it in an afternoon</h2>
+        <p class="l-sub2">One Python process, no database, no cloud. Clone the repository and run it.</p>
+      </div>
+      <pre class="l-code">pip install -r requirements.txt
+uvicorn app.main:app --port 8010
+open  http://127.0.0.1:8010</pre>
+    </section>
+
+    <footer class="l-foot">
+      <span>Longview — the filings, decoded.</span>
+      <span>MIT license · <a href="#docs" data-l="docs">Docs</a> · <a href="#study" data-l="app">Reference</a></span>
+    </footer>
+  </div>
+</div>
+<div id="app">
+<aside class="sidebar">
+  <div class="brand">Longview</div>
+  <nav class="nav-group">
+    <a class="nav" data-route="home" href="#home/portfolio">Home</a>
+  </nav>
+  <nav class="nav-group">
+    <a class="nav" data-route="risk" href="#risk">Risk</a>
+    <a class="nav" data-route="economy" href="#economy">Economy</a>
+  </nav>
+  <nav class="nav-group">
+    <a class="nav" data-route="notes" href="#notes">Notes</a>
+    <a class="nav" data-route="company" href="#company">Company</a>
+  </nav>
+  <nav class="nav-group">
+    <div class="group-label">Smart money</div>
+    <a class="nav" data-route="money/funds" href="#money/funds">Funds</a>
+    <a class="nav" data-route="money/quarter" href="#money/quarter">This quarter</a>
+    <a class="nav" data-route="money/scan" href="#money/scan">Holdings</a>
+    <a class="nav" data-route="money/ask" href="#money/ask">Ask</a>
+  </nav>
+  <nav class="nav-group">
+    <div class="group-label">Backtest lab</div>
+    <a class="nav" data-route="lab/strategy" href="#lab/strategy"><span class="stepno">1</span>Strategy</a>
+    <a class="nav" data-route="lab/setup" href="#lab/setup"><span class="stepno">2</span>Setup</a>
+    <a class="nav" data-route="lab/results" href="#lab/results"><span class="stepno">3</span>Results</a>
+  </nav>
+  <nav class="nav-group">
+    <a class="nav" data-route="study" href="#study">Reference</a>
+    <a class="nav" data-route="docs" href="#docs">Docs</a>
+    <a class="nav" data-route="settings" href="#settings">Settings</a>
+  </nav>
+</aside>
+
+<div class="content">
+<main class="inner">
+
+  <!-- ============ HOME · your portfolio + smart money highlights ============ -->
+  <section id="tab-home" class="tabpane">
+    <div class="hbar">
+      <button class="htab active" data-sub="portfolio" type="button">My portfolio</button>
+      <button class="htab" data-sub="money" type="button">Smart money</button>
+    </div>
+
+    <!-- sub 1 · my portfolio -->
+    <div id="sub-portfolio" class="subpane">
+      <h2>Your portfolio</h2>
+      <p class="lede">Add what you own. Prices come from Yahoo.</p>
+      <p id="pf-status" class="status"></p>
+      <p id="pf-total" class="pf-total" hidden></p>
+
+      <div class="card">
+        <div class="pf-mode" role="group" aria-label="Holding type">
+          <button type="button" class="pf-mode-btn active" data-mode="stock">Listed</button>
+          <button type="button" class="pf-mode-btn" data-mode="custom">Custom</button>
+        </div>
+        <div id="pf-stock-fields">
+          <label for="pf-q">Add a holding</label>
+          <input id="pf-q" type="search" autocomplete="off" placeholder="Search or type a ticker">
+          <div id="pf-suggests" class="pf-results" hidden></div>
+        </div>
+        <div id="pf-custom-fields" hidden>
+          <div class="field">
+            <label for="pf-custom-name">Name</label>
+            <input id="pf-custom-name" maxlength="80" placeholder="e.g. North America Equity Fund">
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label for="pf-price">Current price</label>
+              <input id="pf-price" type="number" min="0" step="any" placeholder="12">
+            </div>
+            <div class="field">
+              <label for="pf-currency">Currency</label>
+              <select id="pf-currency">
+                <option>USD</option><option>GBP</option><option>EUR</option>
+                <option>HKD</option><option>CAD</option><option>JPY</option>
+                <option>AUD</option><option>CHF</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="pf-fields">
+          <div class="field">
+            <label for="pf-shares">Shares</label>
+            <input id="pf-shares" type="number" min="0" step="any" placeholder="10">
+          </div>
+          <div class="field">
+            <label for="pf-cost" id="pf-cost-label">Cost per share</label>
+            <input id="pf-cost" type="number" min="0" step="any" placeholder="120">
+          </div>
+          <div class="field">
+            <label for="pf-date">Bought</label>
+            <input id="pf-date" type="date">
+          </div>
+          <div class="field grow">
+            <label for="pf-note">Note</label>
+            <input id="pf-note" placeholder="optional">
+          </div>
+        </div>
+        <div class="form-row end">
+          <button id="pf-add" class="btn primary">Add</button>
+        </div>
+        <p id="pf-form-status" class="status"></p>
+      </div>
+
+      <div class="card table-card" id="pf-table-card" hidden>
+        <div class="pf-toolbar">
+          <label for="pf-cur">Show in</label>
+          <select id="pf-cur">
+            <option value="">Own currency</option>
+            <option>USD</option><option>GBP</option><option>EUR</option>
+            <option>HKD</option><option>CAD</option><option>JPY</option>
+            <option>AUD</option><option>CHF</option>
+          </select>
+          <span class="pf-toolbar-label">P/L over</span>
+          <span id="pf-periods" class="pf-periods" role="group" aria-label="P/L period"></span>
+          <span id="pf-cur-note" class="dim"></span>
+        </div>
+        <table id="pf-table">
+          <thead><tr>
+            <th data-sort="name">Company</th>
+            <th class="num" data-sort="price">Price</th>
+            <th class="num" data-sort="value">Value</th>
+            <th class="num" data-sort="pl">P/L <small id="pf-pl-period"></small></th>
+            <th class="num" data-sort="date">Bought</th>
+            <th data-sort="smart">Smart money</th><th></th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="pf-empty" class="card">Nothing here yet — add your first holding.</div>
+
+      <p class="fineprint">Prices refresh every 10 minutes. Interval gains use price history. A dash means no data. Not advice.</p>
+    </div>
+
+    <!-- sub 2 · smart money highlights -->
+    <div id="sub-money" class="subpane">
+      <h2>Smart money</h2>
+      <p class="lede">Where your funds agree — the crowded positions, the biggest changes, the new bets. All from the latest 13F filings.</p>
+      <p id="gm-status" class="status"></p>
+
+      <div class="card table-card">
+        <h3>Most crowded</h3>
+        <table id="gm-crowded">
+          <thead><tr>
+            <th>Company</th><th class="num">Funds</th><th class="num">Value</th><th>Change</th><th class="act"></th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="card table-card">
+        <h3>Biggest moves</h3>
+        <table id="gm-moves">
+          <thead><tr>
+            <th>Company</th><th>Fund</th><th class="num">Change</th><th class="num">Value</th><th class="act"></th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="card table-card">
+        <h3>New bets</h3>
+        <table id="gm-new">
+          <thead><tr>
+            <th>Company</th><th>Fund</th><th class="num">Value</th><th class="act"></th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="form-row">
+        <a class="btn ghost" href="#money/scan">Open Holdings</a>
+      </div>
+      <p class="fineprint">13Fs report US long stock only, a quarter behind — no shorts, no overseas holdings. Holdings has the full table and filters.</p>
+    </div>
+  </section>
+
+  <!-- ============ RISK · what the portfolio becomes if each holding moves ============ -->
+  <section id="tab-risk" class="tabpane">
+    <h2>Risk</h2>
+    <p class="lede">What each holding might move, and what the portfolio becomes. Type a move, or let the model suggest one.</p>
+    <p id="rm-status" class="status"></p>
+    <p id="rm-total" class="rm-total" hidden></p>
+
+    <div class="card table-card" id="rm-table-card" hidden>
+      <div class="pf-toolbar rm-toolbar">
+        <label for="rm-cur">Show in</label>
+        <select id="rm-cur">
+          <option value="">Own currency</option>
+          <option>USD</option><option>GBP</option><option>EUR</option>
+          <option>HKD</option><option>CAD</option><option>JPY</option>
+          <option>AUD</option><option>CHF</option>
+        </select>
+        <button id="rm-zero" class="btn ghost" type="button">No move</button>
+        <button id="rm-fill" class="btn primary" type="button">Fill with AI</button>
+        <span id="rm-cur-note" class="dim"></span>
+      </div>
+      <table id="rm-table">
+        <thead><tr>
+          <th>Company</th>
+          <th class="num">Price</th>
+          <th class="num">Value</th>
+          <th class="num">Move %</th>
+          <th class="num">Typical swing</th>
+          <th class="num">After move</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div id="rm-empty" class="card">Nothing here yet — add holdings on Home first.</div>
+
+    <p class="fineprint">A move is a hypothetical price change, −99% to +999%. Typical swing is the holding's own annualized volatility. A dash means no data. Not advice.</p>
+  </section>
+
+  <!-- ============ ECONOMY · where the world's wealth is held ============ -->
+  <section id="tab-economy" class="tabpane">
+    <h2 id="eco-title">Where wealth is held</h2>
+    <p id="eco-lede" class="lede"></p>
+    <p id="eco-status" class="status"></p>
+    <div id="ws-compare" class="wtabs" role="tablist" aria-label="Compare pages" hidden></div>
+    <div id="eco-body" class="card"></div>
+    <div id="eco-cmp" class="card" hidden></div>
+    <div id="cmp-body" class="card" hidden></div>
+
+    <p class="fineprint">A rounded reference picture of global household wealth — about $470T at the end of 2024, after the UBS Global Wealth Report 2025. Shares are whole percentages of the part above them; the dollars are derived from the total. Seven levels deep — six of detail, then where in the world it sits. The decade charts (2015–2024) read the reports' 56-market sample: the world's line is the report's own record, the four regions are anchored on its 2023 and 2024 tables and walked back at their stated since-2008 growth, and everything deeper is assumed — so the charts are the sample's history, not every household. Growth rates are nominal USD assumptions built on the published long-run record, not forecasts; the projections are that arithmetic, nothing more. Static, not live data, and not accounting.</p>
+  </section>
+
+  <!-- ============ STUDY · the AI learning notes centre ============ -->
+  <section id="tab-study" class="tabpane">
+    <h2 id="study-title">Reference</h2>
+    <p id="study-lede" class="lede">Background reading on how money works — open textbooks and reference pages, gathered and written up as saved notes. Kept off the main nav on purpose: it's study material, not analysis.</p>
+    <p id="study-status" class="status"></p>
+    <div id="study-body"></div>
+  </section>
+
+  <!-- ============ SETTINGS · bring your own model key ============ -->
+  <section id="tab-settings" class="tabpane">
+    <h2>Settings</h2>
+    <p class="lede">Your own language-model key. Everything in this app that uses a model — the ask, the fills, the AI backtest, the notes — runs on it. The key is stored only in this browser and sent with each request; the app never stores or logs it. If the server is deployed with its own key, yours simply takes precedence when set.</p>
+    <div class="set-card">
+      <div class="field">
+        <label for="set-base">Base URL <span class="dim">(any OpenAI-compatible endpoint)</span></label>
+        <input id="set-base" type="text" spellcheck="false" placeholder="https://api.openai.com/v1">
+      </div>
+      <div class="field">
+        <label for="set-key">API key</label>
+        <input id="set-key" type="password" spellcheck="false" placeholder="sk-…">
+      </div>
+      <div class="field">
+        <label for="set-model">Model</label>
+        <input id="set-model" type="text" spellcheck="false" placeholder="gpt-4o-mini">
+      </div>
+      <div class="set-actions">
+        <button id="set-test" class="btn" type="button">Test connection</button>
+        <button id="set-save" class="btn primary" type="button">Save in this browser</button>
+        <button id="set-clear" class="btn ghost" type="button">Remove</button>
+      </div>
+      <p id="set-status" class="status"></p>
+    </div>
+    <p id="set-effective" class="dim"></p>
+  </section>
+
+  <!-- ============ DOCS · running it, and how it stays honest ============ -->
+  <section id="tab-docs" class="tabpane">
+    <h2>Docs</h2>
+    <p class="lede">One repository, one Python process, no database, no cloud. This is how to run it, how the key works, and the rules that keep the numbers honest.</p>
+
+    <div class="doc-card">
+      <h3>Run it</h3>
+      <p>Python 3.10 or newer. That is the whole dependency story — a FastAPI app and its usual small stack.</p>
+<pre>git clone &lt;the longview repository&gt; && cd longview
+python -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/uvicorn app.main:app --port 8010</pre>
+      <p class="fineprint">Open <code>http://127.0.0.1:8010</code>. The <code>data/</code> directory is created on first write and holds your reference notes and the economy tree — it is private to your machine and untracked in the repository.</p>
+    </div>
+
+    <div class="doc-card">
+      <h3>The model key</h3>
+      <p>Every feature that uses a language model — the ask, the risk fills, the AI backtest, the reference notes — resolves its model from the same place, in this order:</p>
+      <ol class="doc-order">
+        <li><b>Your key, per request.</b> Set it in Settings (base URL, key, model). It is stored in this browser's local storage and sent with each request as an <code>X-Longview-LLM</code> header.</li>
+        <li><b>The server's key.</b> If you have not set one, the app uses <code>LONGVIEW_LLM_KEY</code>, <code>LONGVIEW_LLM_BASE</code>, and <code>LONGVIEW_LLM_MODEL</code> from its environment (the old <code>PROOF_LLM_*</code> names are still read as a fallback).</li>
+        <li><b>No key.</b> Everything else in the app still works — only the AI features go quiet, and they say so plainly.</li>
+      </ol>
+      <p class="fineprint">Any OpenAI-compatible endpoint works: OpenAI, a hosted provider, or your own server. The key is relayed to your endpoint and never stored or logged on the app.</p>
+    </div>
+
+    <div class="doc-card">
+      <h3>Your data</h3>
+      <p>There is no login and no account. Your portfolio, notes, and the state of each lab run live in this browser's local storage; nothing you enter ever leaves except the market-data lookups and, when you use a key, your requests to your own model endpoint. Market prices come from public sources (Yahoo Finance, SEC EDGAR); the 13F data is the public filing data itself.</p>
+    </div>
+
+    <div class="doc-card">
+      <h3>The math, honestly</h3>
+      <p>No lookahead: a backtest evaluates each day only with prices and information known on that day, and a strategy's research reads only the pages that existed when it runs. No survivorship: the data is what was traded, not what is still around. When the model's answer would move money the plan never approved, the move is dropped and the log says why. A result you cannot audit is not a result.</p>
+    </div>
+
+    <div class="doc-card">
+      <h3>License</h3>
+      <p>MIT. Fork it, self-host it, build your own — the filings belong to the public, and the tool that reads them should too.</p>
+    </div>
+  </section>
+
+  <!-- ============ NOTES · your pages, plus anything saved from the app ============ -->
+  <section id="tab-notes" class="tabpane">
+    <div id="ws-notes" class="wtabs" role="tablist" aria-label="Notes pages"></div>
+    <div id="notes-body"></div>
+  </section>
+
+  <!-- ============ COMPANY · one company, every part of it ============ -->
+  <section id="tab-company" class="tabpane">
+    <div id="ws-company" class="wtabs" role="tablist" aria-label="Company pages"></div>
+    <div id="co-body"></div>
+  </section>
+
+  <!-- ============ BACKTEST LAB · 3 steps ============ -->
+  <section id="tab-lab" class="tabpane active">
+    <div id="ws-lab" class="wtabs" role="tablist" aria-label="Backtest pages"></div>
+
+    <!-- step 1 · strategy -->
+    <div id="lab-strategy" class="steppane active">
+      <h2>Strategy</h2>
+      <p class="lede">Two ways to run it. <strong>My plan</strong>: you set the rules in the form and Longview applies them, literally, to real history. <strong>The AI runs it</strong>: write the strategy in your own words — the model reads it, then trades it day by day.</p>
+      <div class="card">
+        <div class="chipmode" id="lab-modes" role="tablist" aria-label="Backtest mode">
+          <button class="cmode active" data-lmode="my_plan" type="button">My plan</button>
+          <button class="cmode" data-lmode="ai" type="button">The AI runs it</button>
+        </div>
+        <label for="strategy-text" id="lab-text-label">Your strategy, in your own words</label>
+        <textarea id="strategy-text" rows="3" placeholder="e.g. I own SPY and TSLA. Every month I check, and when one drops 15% I add 10% more, then sell it all once it is up 30%."></textarea>
+        <div id="examples" class="chips"></div>
+        <p id="lab-ai-note" class="fineprint" hidden>The AI mode needs a language model. Set one in Settings — it decides every day, so a long run takes minutes.</p>
+        <div class="form-row end">
+          <button id="lab-continue" class="btn primary">Continue</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- step 2 · setup -->
+    <div id="lab-setup" class="steppane">
+      <h2>Setup</h2>
+      <p class="lede" id="setup-lede">Pick where to run it. The backtest uses real price history.</p>
+      <div class="card">
+        <label for="strategy-quote">Your strategy</label>
+        <div id="strategy-quote" class="quote"></div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="symbol" id="symbol-label">Tickers <span style="color:var(--faint);font-weight:400">(space or comma separated, up to 10)</span></label>
+            <input id="symbol" value="SPY" spellcheck="false" maxlength="80">
+          </div>
+          <div class="field">
+            <label for="years">Years of history</label>
+            <select id="years">
+              <option>5</option>
+              <option selected>10</option>
+              <option>20</option>
+            </select>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="cash">Start cash ($)</label>
+            <input id="cash" type="number" value="100000" min="1000" step="1000" inputmode="numeric">
+          </div>
+          <div class="field" id="freq-field">
+            <label for="frequency">How often I decide</label>
+            <select id="frequency">
+              <option value="week">every week</option>
+              <option value="two_weeks">every two weeks</option>
+              <option value="month" selected>every month</option>
+              <option value="quarter">every quarter</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="plan-fields">
+          <div class="group-label" id="trigger-head">Drop triggers — what I do when a price falls</div>
+          <div id="trigger-rows"></div>
+          <button id="add-trigger" class="btn ghost trigger-add" type="button">+ add a drop trigger</button>
+          <div class="field-row">
+            <div class="field">
+              <label for="on-drop">When a drop trigger fires</label>
+              <select id="on-drop">
+                <option value="hold">hold — just watch it</option>
+                <option value="add">add more</option>
+                <option value="sell_half">sell half</option>
+                <option value="sell_all">sell everything</option>
+              </select>
+            </div>
+            <div class="field" id="add-weight-field">
+              <label for="add-weight">add this share of the portfolio (%)</label>
+              <input id="add-weight" type="number" value="10" min="1" max="50" step="1" inputmode="numeric">
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label for="exit-pct">Sell all at a gain of % (optional)</label>
+              <input id="exit-pct" type="number" placeholder="e.g. 30" min="1" max="500" step="1" inputmode="numeric">
+            </div>
+            <div class="field" style="align-self:end">
+              <label style="display:flex;gap:8px;align-items:center"><input id="research" type="checkbox" style="width:auto"> research the web each decision day</label>
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label for="names">Wiki page titles, if a ticker differs (one per line)</label>
+              <textarea id="names" rows="2" placeholder="BRK.B=Berkshire Hathaway" spellcheck="false"></textarea>
+            </div>
+            <div class="field" style="align-self:end">
+              <label class="hint" id="plan-what" style="display:block"></label>
+            </div>
+          </div>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="start-date">Start date (optional)</label>
+            <input id="start-date" type="date">
+          </div>
+          <div class="field">
+            <label for="end-date">End date (optional)</label>
+            <input id="end-date" type="date">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <button id="lab-back-1" class="btn ghost">Back</button>
+          <button id="run-lab" class="btn primary">Run the plan</button>
+        </div>
+        <div class="search-progress" id="lab-progress" hidden>
+          <span class="spinner" aria-hidden="true"></span>
+          <span id="lab-progress-msg">Running…</span>
+        </div>
+        <p class="lab-status status"></p>
+      </div>
+    </div>
+
+    <!-- step 3 · results -->
+    <div id="lab-results" class="steppane">
+      <h2>Results</h2>
+      <div id="lab-empty" class="card">Nothing here yet — go to step 1 and describe a strategy, then run it.</div>
+      <div id="lab-done" hidden>
+        <div id="understood" class="understood" hidden></div>
+        <div id="results">
+          <div id="metric-grid" class="metric-grid"></div>
+          <div class="chart-wrap"><canvas id="chart"></canvas></div>
+          <p id="verdict" class="verdict"></p>
+          <div id="decision-log" hidden></div>
+        </div>
+        <div class="form-row">
+          <button id="lab-edit" class="btn ghost">Edit strategy</button>
+          <button id="bt-save" class="btn ghost" hidden>Save to notes</button>
+          <button id="lab-again" class="btn primary">Run again</button>
+        </div>
+        <p class="lab-status status"></p>
+      </div>
+      <p class="fineprint">Backtests replay one market — they don't predict the next. The AI mode's decisions come from a language model reading your words, not from the plan form. Not financial advice.</p>
+    </div>
+
+  </section>
+
+  <!-- ============ SMART MONEY · 4 subpages ============ -->
+  <section id="tab-money" class="tabpane">
+    <div id="ws-money" class="wtabs" role="tablist" aria-label="Smart Money pages"></div>
+    <div class="money-head">
+      <h2 id="money-title">Funds</h2>
+      <p id="money-status" class="status">Loading…</p>
+    </div>
+
+    <!-- subpage 1 · your funds -->
+    <div id="sub-funds" class="subpane active">
+      <p class="lede">The funds you follow. Add any big investor, remove any.</p>
+      <div class="dir-row">
+        <input id="dir-q" type="search" autocomplete="off" placeholder="Search 10,000+ funds and investors…">
+        <span id="dir-status" class="status"></span>
+      </div>
+      <div id="dir-results" class="dir-results" hidden></div>
+      <div id="fund-grid"></div>
+    </div>
+
+    <!-- subpage 2 · last reported quarter -->
+    <div id="sub-quarter" class="subpane">
+      <p class="lede">What your funds changed, last reported quarter <small id="q-asof" class="dim"></small></p>
+      <div class="quarter-grid">
+        <div class="card"><h3>New bets</h3><p class="tcap">Brand-new positions.</p><div id="rollup-new"></div></div>
+        <div class="card"><h3>Biggest moves</h3><p class="tcap">Largest changes in shares.</p><div id="rollup-moves"></div></div>
+        <div class="card"><h3>Crowding</h3><p class="tcap">Held by the most funds.</p><div id="rollup-crowd"></div></div>
+      </div>
+    </div>
+
+    <!-- subpage 3 · holdings -->
+    <div id="sub-scan" class="subpane">
+      <p class="lede">Every holding in your funds, from their latest filings.</p>
+
+      <div class="card">
+        <div class="sec-row">
+          <input id="sec-name" placeholder="Company name or code">
+          <button id="sec-go" class="btn primary">See holders</button>
+        </div>
+        <div id="sec-result" class="sec-result" hidden></div>
+      </div>
+
+      <div class="card">
+        <div class="fgrid">
+          <div class="field grow">
+            <label for="f-q">Search</label>
+            <input id="f-q" placeholder="name or code">
+          </div>
+          <div class="field">
+            <label for="f-asset">Type</label>
+            <select id="f-asset">
+              <option value="">Any</option><option>stock</option><option>etf</option>
+              <option>preferred</option><option>option</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="f-status">Change</label>
+            <select id="f-status">
+              <option value="">Any</option><option>new</option><option>increased</option>
+              <option>decreased</option><option>unchanged</option><option>exited</option>
+            </select>
+          </div>
+        </div>
+        <details class="more-f"><summary>More filters</summary>
+          <div class="fgrid">
+            <div class="field">
+              <label for="f-crowd">Funds holding at least</label>
+              <input id="f-crowd" type="number" min="1" placeholder="1">
+            </div>
+            <div class="field">
+              <label for="f-value">Value at least $</label>
+              <input id="f-value" type="number" min="0" step="1000000" placeholder="any">
+            </div>
+            <div class="field">
+              <label for="f-weight">At least % of fund</label>
+              <input id="f-weight" type="number" min="0" step="0.1" placeholder="any">
+            </div>
+            <div class="field">
+              <label for="f-mov">Moved at least $</label>
+              <input id="f-mov" type="number" min="0" step="1000000" placeholder="any">
+            </div>
+            <div class="field">
+              <label for="f-movp">Moved at least %</label>
+              <input id="f-movp" type="number" min="0" step="1" placeholder="any">
+            </div>
+            <div class="field chk-field">
+              <label class="chk"><input id="f-surprise" type="checkbox">New bets only</label>
+            </div>
+          </div>
+        </details>
+
+        <div id="fund-chips" class="chips-row"></div>
+
+        <div class="scan-bar">
+          <span id="scan-count" class="status"></span>
+          <div class="field chk-field">
+            <label class="chk"><input id="f-agg" type="checkbox">One row per company</label>
+          </div>
+          <div class="field field-auto">
+            <label for="f-limit">Show</label>
+            <select id="f-limit"><option selected>10</option><option>25</option><option>50</option><option>100</option><option>200</option></select>
+          </div>
+          <button id="export-btn" class="btn ghost">CSV</button>
+          <button id="reset-btn" class="btn ghost">Reset</button>
+        </div>
+      </div>
+
+      <div class="card table-card">
+        <table id="scan-table">
+          <thead><tr>
+            <th data-sort="issuer">Company</th><th data-sort="fund">Fund</th>
+            <th>Status</th>
+            <th data-sort="value" class="num">Value</th>
+            <th data-sort="change" class="num">Change</th>
+            <th data-sort="n_funds" class="num">Funds</th><th class="act"></th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <p class="fineprint">13Fs cover US long stock only, at quarter-end prices, filed about 45 days after the quarter. Not financial advice.</p>
+    </div>
+
+    <!-- subpage 4 · ask -->
+    <div id="sub-ask" class="subpane">
+      <p class="lede">Ask about what your funds hold. Answers use only their filed numbers.</p>
+      <div class="card">
+        <div class="sec-row">
+          <input id="ask-q" type="search" placeholder="e.g. What are they buying right now?">
+          <button id="ask-go" class="btn primary">Ask</button>
+        </div>
+        <div id="ask-starters" class="chips"></div>
+        <div class="ask-controls">
+          <div class="field field-auto">
+            <label for="ask-qtr">Look back</label>
+            <select id="ask-qtr">
+              <option value="1" selected>Last quarter</option>
+              <option value="2">2 quarters</option>
+              <option value="3">3 quarters</option>
+              <option value="4">4 quarters</option>
+            </select>
+          </div>
+          <div id="ask-funds" class="chips-row"></div>
+        </div>
+        <div id="ask-out"></div>
+        <p id="ask-status" class="status"></p>
+      </div>
+      <p class="fineprint">Filings lag the quarter by about 45 days. Not financial advice.</p>
+    </div>
+
+  </section>
+
+</main>
+</div>
+</div>
+
+<div id="chat" class="chat">
+  <button id="chat-fab" class="chat-fab" type="button" aria-label="Ask about your portfolio">Ask</button>
+  <div id="chat-panel" class="chat-panel" hidden>
+    <div class="chat-head">
+      <strong>Portfolio chat</strong>
+      <button id="chat-close" class="chat-close" type="button" aria-label="Close">×</button>
+    </div>
+    <div id="chat-log" class="chat-log"></div>
+    <form id="chat-form" class="chat-form">
+      <input id="chat-q" placeholder="Ask about your holdings" autocomplete="off" maxlength="800">
+      <button class="btn primary" type="submit">Send</button>
+    </form>
+    <p class="chat-note">Local model · not advice</p>
+  </div>
+</div>
+<script src="/static/dcf.js?v=37"></script>
+<script src="/static/app.js?v=40"></script>
+</body>
+</html>
