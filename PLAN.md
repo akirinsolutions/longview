@@ -1168,45 +1168,49 @@ in plain English, using *only* the numbers Proof read from the 13Fs.
         the route glue with faked prices and a faked model) —
         410 total, all offline.
 
-24. 24. **Rebrand to Longview, then convert to an open-source SaaS (in
-     progress).** Ask in the user's words: *the target audience are
-     professionals; rebrand this; start converting it into a full
-     functioning website SaaS, no login, open source; and the one must-
-     include is a way to set up your own AI model key, because everyone
-     else can't use my local model.* Decisions: the name is **Longview**
-     (user's pick); the Study section is **kept but tucked away** -
-     renamed "Reference", moved out of the main nav to a bottom-of-
-     sidebar link.
-     - - 1 **Rebrand.** Longview on every user-facing surface (title,
-       landing, sidebar brand, ledes, health endpoint, system prompts,
-       README); a cooler professional palette (dark landing, paper app,
-       blue-black ink); Study -> "Reference" in a bottom nav group. The
-       tests pin nothing on the name, so the 410 must stay green
-       untouched.
-     - - 2 **Bring-your-own model key (the must-include).** New
-       `app/llm.py` seam: canonical env vars `LONGVIEW_LLM_KEY` /
-       `LONGVIEW_LLM_BASE` / `LONGVIEW_LLM_MODEL` with `PROOF_LLM_*`
-       legacy fallback; a per-request override arrives in an
-       `X-Longview-LLM` header (base64 JSON of {base, key, model});
-       `risk._post_llm` resolves request > env. A Settings tab: base
-       URL, key, model, a Test button, saved in localStorage; `GET
-       /api/llm` status + `POST /api/llm/test`; every LLM route honors
-       the header, background jobs capture it at start. Every "no model"
-       state points at Settings, not at env vars.
-     - - 3 **SaaS site.** A real public landing (dark hero, three
-       pillars, bring-your-own-key steps, open source, honest rules,
-       CTAs into the app and the docs); an in-app `#docs` route with the
-       self-hosting guide; a footer (Reference, Docs, license). No
-       login: state is per-browser (localStorage). The key travels
-       browser -> app server -> model provider per request; the app
-       never stores it.
-     - - 4 **Open source.** `.gitignore` (data/, .venv/, caches, logs),
-       MIT `LICENSE`, the public README rewrite, `git init` + first
-       commit - "let it be open source" supersedes the earlier no-repo
-       rule; `data/` stays on disk, just untracked.
-     Standing rules unchanged: no login, no new deps (httpx is
-     existing), RAM rule (tests never touch the :8000 model), plain-
-     English errors, no-lookahead math, data/ preserved.
+24. **Rebrand to Longview, then convert to an open-source SaaS
+    (built).** Ask in the user's words: *the target audience are
+    professionals; rebrand this; start converting it into a full
+    functioning website SaaS, no login, open source; and the one
+    must-include is a way to set up your own AI model key, because
+    everyone else can't use my local model.* Decisions: the name is
+    **Longview** (user's pick); the Study section is **kept but
+    tucked away** - renamed "Reference", moved out of the main nav
+    to a bottom-of-sidebar link. All four increments shipped; the
+    repository is public at
+    https://github.com/akirinsolutions/longview (MIT); first
+    commit `3222acd`.
+    - 1. **Rebrand.** Longview on every user-facing surface (title,
+      landing, sidebar brand, ledes, health endpoint, system
+      prompts, README); a cooler professional palette (dark
+      landing, paper app, blue-black ink); Study -> "Reference" in
+      a bottom nav group. The tests pin nothing on the name, so the
+      410 must stay green untouched.
+    - 2. **Bring-your-own model key (the must-include).** New
+      `app/llm.py` seam: canonical env vars `LONGVIEW_LLM_KEY` /
+      `LONGVIEW_LLM_BASE` / `LONGVIEW_LLM_MODEL` with `PROOF_LLM_*`
+      legacy fallback; a per-request override arrives in an
+      `X-Longview-LLM` header (base64 JSON of {base, key, model});
+      `risk._post_llm` resolves explicit config > request > env. A
+      Settings tab: base URL, key, model, a Test button, saved in
+      localStorage; `GET /api/llm` status + `POST /api/llm/test`;
+      every LLM route honors the header, background jobs capture
+      the config at submit time. Every "no model" state points at
+      Settings, not at env vars. 439 tests, all offline.
+    - 3. **SaaS site.** A real public landing (dark hero, three
+      pillars, bring-your-own-key steps, open source, honest rules,
+      CTAs into the app and the docs); an in-app `#docs` route
+      with the self-hosting guide; a footer (Reference, Docs,
+      license). No login: state is per-browser (localStorage). The
+      key travels browser -> app server -> model provider per
+      request; the app never stores it.
+    - 4. **Open source.** `.gitignore` (data/, .venv/, caches,
+      logs), MIT `LICENSE`, the public README rewrite, `git init` +
+      first commit - "let it be open source" supersedes the earlier
+      no-repo rule; `data/` stays on disk, just untracked.
+    Standing rules unchanged: no login, no new deps (httpx is
+    existing), RAM rule (tests never touch the :8000 model),
+    plain-English errors, no-lookahead math, data/ preserved.
 
 ## How to run
 

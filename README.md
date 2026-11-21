@@ -74,7 +74,7 @@ page.
 Python 3.10 or newer. Nothing else.
 
 ```
-git clone <your-git-host>/longview.git && cd longview
+git clone https://github.com/akirinsolutions/longview.git && cd longview
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 .venv/bin/uvicorn app.main:app --port 8010
