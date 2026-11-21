@@ -37,9 +37,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from . import (backtest, directory, economy, funds, llm, market_data,
-               netfix, notes, portfolio, research, risk, study,
-               strategy_lab, translator)
+from . import (backtest, directory, economy, funds, lab_research, llm,
+               market_data, netfix, notes, portfolio, research, risk,
+               strategy_lab, translator, vault)
 
 # Some networks hand the host no DNS servers at all (this one, right now):
 # install the DoH fallback so the web-facing paths (study search, Yahoo,
@@ -165,6 +165,7 @@ def llm_status():
               else "env" if env_key else "none")
     return {"configured": bool(cfg["key"]), "source": source,
             "base": cfg["base"], "model": cfg["model"],
+            "base_problem": llm.validate_base(cfg["base"]),
             "defaults": {"base": llm.DEFAULT_BASE,
                          "model": llm.DEFAULT_MODEL}}
 
@@ -276,7 +277,7 @@ def _strategy_run_sync(req: StrategyBacktestRequest) -> dict:
         raise HTTPException(400, str(e))
     except Exception as e:
         raise HTTPException(502, f"Could not fetch market data: {e}")
-    researcher = research.Researcher() if plan.get("research") else None
+    researcher = lab_research.Researcher() if plan.get("research") else None
     try:
         result = strategy_lab.simulate(plan, prices, strategy_lab.decide_plan,
                                        researcher, start=req.start, end=req.end)
@@ -365,7 +366,7 @@ def _strategy_worker(job_id: str, text: str, symbols: list[str],
         for s in plan["symbols"]:
             report(f"fetching {s} market data…")
             prices[s] = market_data.fetch_history(s, years)
-        researcher = research.Researcher() if plan.get("research") else None
+        researcher = lab_research.Researcher() if plan.get("research") else None
         report("running the backtest — the model decides every day…"
                if researcher else "running the backtest…")
         result = strategy_lab.simulate(plan, prices,
@@ -694,14 +695,8 @@ class EconomyCompareRequest(BaseModel):
     ai: bool = False
 
 
-class StudySearchRequest(BaseModel):
-    query: str = Field(min_length=1, max_length=200)
-    topic: str = ""
-
-
-class StudyAiRequest(BaseModel):
-    text: str = Field(min_length=1)
-    topic: str = ""
+class ResearchRunRequest(BaseModel):
+    goal: str = Field(min_length=1, max_length=4000)
 
 
 @app.post("/api/economy/compare")
@@ -727,70 +722,89 @@ def economy_compare(req: EconomyCompareRequest):
 
 
 # ---------------------------------------------------------------------------
-# Study — the AI learning notes centre
+# Research — the goal-driven section (the old study centre's address)
 # ---------------------------------------------------------------------------
 
-@app.get("/api/study")
-def study_list():
-    """The reference set plus the reader's own notes, list shape (no
-    bodies — a detail fetch pays for those)."""
-    return {"notes": study.listing(), "meta": study.meta()}
+@app.get("/api/research")
+def research_list():
+    """The saved reports, list shape (no bodies — a detail fetch pays
+    for those), plus what the reader's file holds (the "what I can tie
+    into" line) and whether a model is set."""
+    return {"reports": research.listing(), "meta": research.meta()}
 
 
-@app.get("/api/study/{nid}")
-def study_detail(nid: str):
-    note = study.get_note(nid)
-    if note is None:
-        raise HTTPException(404, "No note at that address. The list shows "
-                                 "what the centre holds.")
-    return note
-
-
-@app.post("/api/study/ai")
-def study_ai(req: StudyAiRequest):
-    """A pasted document → one saved note, via the configured model.
-
-    503 when no key is set (the card shouldn't be visible, but the API
-    tells the truth); 502 in plain English when the model's answer is
-    unusable."""
-    if not llm.is_configured():
-        raise HTTPException(503, "Turning documents into notes needs a "
-                                 "language model. Set one in Settings.")
+@app.post("/api/research/run")
+def research_run_start(req: ResearchRunRequest, request: Request):
+    """Kick off a run for a goal: the job gathers the open textbooks
+    and papers on it, then the model writes one saved report that ties
+    the findings to the reader's data. Returns the job to poll. The
+    request's model settings are captured here — the worker thread
+    cannot see the request's key."""
+    config = llm.resolve()
     try:
-        return study.ai_summarize(req.text, req.topic or "")
-    except RuntimeError as e:
-        raise HTTPException(502, str(e))
-
-
-@app.post("/api/study/search")
-def study_search_start(req: StudySearchRequest):
-    """Kick off a web search for a topic: the job gathers the open
-    textbook and reference pages, then the model writes one saved note
-    from them. Returns the job to poll."""
-    try:
-        return study.start_search(req.query, req.topic or "")
+        return research.start_run(req.goal, config)
     except RuntimeError as e:
         raise HTTPException(400, str(e))
 
 
-@app.get("/api/study/search/{job_id}")
-def study_search_status(job_id: str):
-    """One poll of a search job: status, plain-English progress lines,
-    the sources found, and the note when it's done."""
-    job = study.get_search_job(job_id)
+@app.get("/api/research/run/{job_id}")
+def research_run_status(job_id: str):
+    """One poll of a run job: status, plain-English progress lines,
+    the sources found, and the report when it's done."""
+    job = research.get_run_job(job_id)
     if job is None:
-        raise HTTPException(404, "No search job at that address — it may "
-                                  "have expired.")
+        raise HTTPException(404, "No research run at that address — it "
+                                  "may have expired.")
     return job
 
 
-@app.delete("/api/study/{nid}")
-def study_delete(nid: str):
+@app.get("/api/research/{rid}")
+def research_detail(rid: str):
+    rep = research.get_report(rid)
+    if rep is None:
+        raise HTTPException(404, "No report at that address. The list "
+                                 "shows what the section holds.")
+    return rep
+
+
+@app.delete("/api/research/{rid}")
+def research_delete(rid: str):
     try:
-        study.delete_note(nid)
+        research.delete_report(rid)
     except RuntimeError as e:
-        raise HTTPException(409, str(e))
+        raise HTTPException(404, str(e))
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# The vault — one file for everything the reader owns. Export is a GET;
+# import is a PUT. The client mirrors it in localStorage and syncs on
+# load; these routes are the file itself, on the server's side.
+# ---------------------------------------------------------------------------
+
+@app.get("/api/vault")
+def vault_get():
+    """The whole data file (all sections, or the empty skeleton)."""
+    return vault.load()
+
+
+@app.put("/api/vault")
+async def vault_put(request: Request):
+    """Replace the server's copy with the reader's file — the import
+    path. Accepts a full vault, a vault's sections block, or a bare
+    {section: envelope} map; unknown names are dropped."""
+    raw = await request.body()
+    if len(raw) > 4_000_000:
+        raise HTTPException(413, "That file is bigger than 4 MB — a "
+                                 "Longview data file should not be.")
+    try:
+        body = json.loads(raw)
+    except Exception:
+        raise HTTPException(400, "That file did not parse as JSON.")
+    try:
+        return vault.replace(body)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 @app.get("/api/search")

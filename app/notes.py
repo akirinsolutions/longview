@@ -1,8 +1,8 @@
 """Your notes: pages of writing, plus anything you saved from the app.
 
-Pages live in ``data/notes.json`` — the same ``{v, updated, ...}``
-envelope and atomic write as the portfolio and the roster. Each page
-carries two kinds of content:
+Pages live in the vault's ``notes`` section (``data/longview.json``) —
+the same ``{v, updated, ...}`` envelope as the portfolio and the roster.
+Each page carries two kinds of content:
 
 - ``body``: free text the person writes (the note itself).
 - ``snippets``: pieces saved from elsewhere in Longview — an Ask answer,
@@ -18,9 +18,10 @@ import json
 import secrets
 import threading
 import time
-from pathlib import Path
 
-NOTES_PATH = Path(__file__).resolve().parent.parent / "data" / "notes.json"
+from . import vault
+
+_SECTION = "notes"
 _NOTES_VERSION = 1
 
 _lock = threading.Lock()
@@ -100,10 +101,9 @@ def _snippet_hash(source: str, title: str, lines: list[str]) -> str:
 # ---------------------------------------------------------------------------
 
 def _load_file() -> list[dict] | None:
-    """The saved pages, or None if the file is missing or corrupt."""
-    try:
-        d = json.loads(NOTES_PATH.read_text())
-    except (OSError, json.JSONDecodeError):
+    """The saved pages, or None if the vault holds none or a bad one."""
+    d = vault.read_section(_SECTION)
+    if d is None:
         return None
     if d.get("v") != _NOTES_VERSION:
         return None
@@ -126,12 +126,9 @@ def _save_file(pages: list[dict]) -> None:
     Lock-free on purpose: the mutators below hold the lock across the
     read-modify-write (same as the portfolio's save).
     """
-    NOTES_PATH.parent.mkdir(parents=True, exist_ok=True)
-    tmp = NOTES_PATH.parent / (NOTES_PATH.name + ".tmp")
-    tmp.write_text(json.dumps(
-        {"v": _NOTES_VERSION, "updated": int(time.time()), "pages": pages},
-        indent=1))
-    tmp.replace(NOTES_PATH)
+    vault.write_section(_SECTION,
+                        {"v": _NOTES_VERSION, "updated": int(time.time()),
+                         "pages": pages})
 
 
 def load_pages() -> list[dict]:

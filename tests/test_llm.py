@@ -59,6 +59,17 @@ def test_parse_header_rejects_junk_silently(raw):
 # resolve: explicit > request override > environment, per field
 # ---------------------------------------------------------------------------
 
+@pytest.fixture(autouse=True)
+def _names_resolve_to_loopback(monkeypatch):
+    """``validate_base`` looks the base URL's name up before any call
+    (a public instance must not proxy into a reader's intranet). The
+    suite is offline and its test bases are invented hosts, so every
+    name answers 127.0.0.1: the loopback the rules always allow."""
+    def fake_getaddrinfo(host, port, *a, **k):
+        return [(2, 1, 6, "", ("127.0.0.1", port))]
+    monkeypatch.setattr(llm.socket, "getaddrinfo", fake_getaddrinfo)
+
+
 def _clean_env(monkeypatch):
     for var in ("LONGVIEW_LLM_KEY", "LONGVIEW_LLM_BASE", "LONGVIEW_LLM_MODEL",
                 "PROOF_LLM_KEY", "PROOF_LLM_BASE", "PROOF_LLM_MODEL"):

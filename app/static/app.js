@@ -35,6 +35,86 @@ const LLM = {
 };
 LLM.load();
 
+/* ---------------- Your data: one file, mirrored in this browser ----------------
+   The app keeps everything the reader owns in one file on its machine.
+   The client holds a mirror in local storage; on load the two compare
+   and the newer one wins (a newer mirror is pushed up). Any section
+   write makes the mirror stale — it refreshes itself. Export is a
+   download of the file; import is a file picked back in. */
+const VAULT = {
+  key: "longview-vault",
+  data: null,
+  load() {
+    try {
+      const s = JSON.parse(localStorage.getItem(this.key) || "null");
+      this.data = (s && s.v === 1 && s.sections) ? s : null;
+    } catch { this.data = null; }   // private mode: run on the server's file
+    return this;
+  },
+  save() {
+    try {
+      if (this.data) localStorage.setItem(this.key, JSON.stringify(this.data));
+      else localStorage.removeItem(this.key);
+    } catch { /* private mode */ }
+  },
+  /* The load sync. The server file and this mirror race on `updated`;
+     the newer one wins. A down server leaves the mirror as it is. */
+  async sync() {
+    try {
+      const server = await api("/api/vault");
+      const mine = this.data;
+      if (mine && mine.updated > (server.updated || 0))
+        await api("/api/vault", { method: "PUT", body: mine });
+      this.data = await api("/api/vault");
+      this.save();
+    } catch { /* offline: keep what the mirror held */ }
+    return this.data;
+  },
+  /* A section write landed on the server; the mirror is stale. */
+  async refresh() {
+    if (!this.data) return;
+    try {
+      this.data = await api("/api/vault");
+      this.save();
+    } catch { /* server went away: keep the mirror */ }
+  },
+  /* Download the mirror as the file it is. */
+  export() {
+    if (!this.data) return false;
+    const blob = new Blob([JSON.stringify(this.data, null, 2)],
+                          { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "longview.json";
+    a.click();
+    URL.revokeObjectURL(a.href);
+    return true;
+  },
+  /* Import: parse locally for a fast plain error, then the server's
+     replace is the gate (it accepts a full vault, its sections block,
+     or a bare section map — and says so in plain English). */
+  async importFile(file) {
+    if (file.size > 4_000_000)
+      throw new Error("That file is bigger than 4 MB — a Longview data file should not be.");
+    let parsed;
+    try { parsed = JSON.parse(await file.text()); }
+    catch { throw new Error("That file did not parse as JSON."); }
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
+      throw new Error("That file is not a Longview data file.");
+    await api("/api/vault", { method: "PUT", body: parsed });
+    this.data = await api("/api/vault");
+    this.save();
+    return this.data;
+  },
+};
+VAULT.load();
+
+/* The routes whose success means the data file changed on the server.
+   (The roster writes live under /api/money/roster — the 13F scan pool
+   at /api/funds is read-only.) */
+const VAULT_WRITERS = ["/api/portfolio", "/api/notes", "/api/risk",
+                       "/api/money/roster", "/api/research", "/api/economy"];
+
 async function api(path, { method = "GET", body } = {}) {
   const headers = {};
   if (body) headers["Content-Type"] = "application/json";
@@ -47,6 +127,8 @@ async function api(path, { method = "GET", body } = {}) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+  if (method !== "GET" && VAULT_WRITERS.some((p) => path.startsWith(p)))
+    VAULT.refresh();   // quiet: the mirror catches up in the background
   return data;
 }
 
@@ -497,8 +579,8 @@ function applyHash() {
     resolveEconomy(parts.slice(1));
     return;
   }
-  if (kind === "study") {
-    resolveStudy(parts[1]);
+  if (kind === "research") {
+    resolveResearch(parts[1]);
     return;
   }
   if (kind === "settings") {
@@ -599,46 +681,51 @@ function resolveLab(parts) {
 window.addEventListener("hashchange", applyHash);
 const go = (route) => { location.hash = route; };
 
-/* ---------------- Study · the AI learning notes centre ----------------
-   A reference corpus of plain-English notes (rendered server-side) plus a
-   bring-a-document card: paste a financial text, the model writes it up as
-   one saved note. No workspace tabs: the list and a note are the whole page.
-   ------------------------------------------------------------------------ */
+/* ---------------- Research · give it a goal ----------------
+    The section the old study centre used to be. The reference notes it
+    served are gone from the section; it starts blank. The input is a
+    goal — one or two sentences about what the reader wants to
+    understand or decide. A run reads the open textbooks and papers on
+    it (Wikipedia, Wikibooks, Wikiversity, the arXiv — the hosts are
+    fixed), then the model writes one saved report whose final part
+    ties the findings to whatever the vault holds. No workspace tabs:
+    the goal card, the list, and a report are the whole page.
+    ------------------------------------------------------------------------ */
 
-const STUDY = { notes: null, meta: null, loading: false, id: null, aiBusy: false,
-                searchMode: "paste", searchPoll: null };
+const RESEARCH = { reports: null, meta: null, loading: false, id: null,
+                   runBusy: false, runPoll: null, runId: null };
 
-function stopStudySearchPoll() {
-  if (STUDY.searchPoll) clearInterval(STUDY.searchPoll);
-  STUDY.searchPoll = null;
+function stopResearchPoll() {
+  if (RESEARCH.runPoll) clearInterval(RESEARCH.runPoll);
+  RESEARCH.runPoll = null;
 }
 
-function studyStatus(msg, isErr) {
-  const st = $("#study-status");
+function researchStatus(msg, isErr) {
+  const st = $("#research-status");
   st.className = "status" + (isErr ? " error" : "");
   st.textContent = msg || "";
 }
 
-async function loadStudy(force) {
-  if (STUDY.loading || (STUDY.notes !== null && !force)) return;
-  STUDY.loading = true;
-  studyStatus("Opening the centre…");
+async function loadResearch(force) {
+  if (RESEARCH.loading || (RESEARCH.reports !== null && !force)) return;
+  RESEARCH.loading = true;
+  researchStatus("Opening the section…");
   try {
-    const d = await api("/api/study");
-    STUDY.notes = d.notes || [];
-    STUDY.meta = d.meta || null;
-    studyStatus("");
-    if (STUDY.id) renderStudyNote(STUDY.id);
-    else renderStudyList();
+    const d = await api("/api/research");
+    RESEARCH.reports = d.reports || [];
+    RESEARCH.meta = d.meta || null;
+    researchStatus("");
+    if (RESEARCH.id) renderResearchReport(RESEARCH.id);
+    else renderResearchList();
   } catch (e) {
-    studyStatus(e.message, true);
-    $("#study-body").innerHTML = "";
+    researchStatus(e.message, true);
+    $("#research-body").innerHTML = "";
   } finally {
-    STUDY.loading = false;
+    RESEARCH.loading = false;
   }
 }
 
-function studyCard(n) {
+function researchCard(n) {
   const c = document.createElement("div");
   c.className = "study-card";
   c.setAttribute("role", "button");
@@ -677,7 +764,7 @@ function studyCard(n) {
     }
   }
   c.append(top, h, s, foot);
-  const open = () => go("#study/" + encodeURIComponent(n.id));
+  const open = () => go("#research/" + encodeURIComponent(n.id));
   c.addEventListener("click", open);
   c.addEventListener("keydown", (e) => {
     if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); }
@@ -685,181 +772,141 @@ function studyCard(n) {
   return c;
 }
 
-function renderStudyList() {
-  const body = $("#study-body");
+function renderResearchList() {
+  const body = $("#research-body");
   body.innerHTML = "";
-  if (STUDY.meta && STUDY.meta.llm) body.appendChild(studyDocCard());
-  if (STUDY.notes.length) {
+  body.appendChild(researchGoalCard());
+  if (RESEARCH.reports.length) {
     const grid = document.createElement("div");
     grid.className = "study-grid";
-    STUDY.notes.forEach((n) => grid.appendChild(studyCard(n)));
+    RESEARCH.reports.forEach((n) => grid.appendChild(researchCard(n)));
     body.appendChild(grid);
   } else {
     const empty = document.createElement("div");
     empty.className = "card";
-    empty.textContent = "The centre is empty — bring a document to write its first note.";
+    empty.textContent = "No reports yet. Give it a goal above to write the first one.";
     body.appendChild(empty);
   }
   reveal(body);
 }
 
-function studyDocCard() {
+/* The goal card: always at the top of the section. Its fine print says
+   what a run will tie into, from the section's counts of the vault. */
+function researchGoalCard() {
   const card = document.createElement("div");
   card.className = "card study-doc";
+  const d = (RESEARCH.meta && RESEARCH.meta.data) || {};
+  const bits = [];
+  if (d.portfolio) bits.push(d.portfolio + " holding" + (d.portfolio === 1 ? "" : "s"));
+  if (d.pages) bits.push(d.pages + " note page" + (d.pages === 1 ? "" : "s"));
+  if (d.moves) bits.push(d.moves + " risk move" + (d.moves === 1 ? "" : "s"));
+  let ties = bits.length
+    ? " When it is written, the report's final part ties the findings to your file — right now that's " + bits.join(", ") + "."
+    : " Your file is empty, so the report stands on its own.";
+  if (RESEARCH.meta && !RESEARCH.meta.llm)
+    ties += " <b>No model key is set</b>: the run will gather the pages, but it cannot write the report until you add one in Settings.";
   card.innerHTML =
-    '<h3>Bring material</h3>' +
-    '<span class="chipmode" id="study-doc-modes">' +
-    '<button class="cmode active" data-smode="paste" type="button">Paste a document</button>' +
-    '<button class="cmode" data-smode="search" type="button">Search the web</button>' +
-    '</span>' +
-    '<p class="desc" id="study-doc-desc"></p>' +
-    '<div id="study-paste-box">' +
-    '<textarea id="study-doc-text" maxlength="20000" placeholder="Paste the document here (up to 20,000 characters)…"></textarea>' +
+    '<h3>Research a goal</h3>' +
+    '<p class="desc">Say what you want to understand or decide — a sentence or two. ' +
+    'The run reads the open textbooks and papers on it (Wikipedia, Wikibooks, ' +
+    'Wikiversity, the arXiv), then the model writes one saved report.' +
+    ties + '</p>' +
+    '<textarea id="research-goal" maxlength="2000" placeholder="e.g. I hold credit and keep seeing “high yield” — what does that actually cost me?"></textarea>' +
     '<div class="doc-row">' +
-    '<input id="study-doc-topic" type="text" maxlength="40" placeholder="What does it matter for? (optional)">' +
-    '<button class="btn primary" id="study-doc-btn" type="button">Write the note</button>' +
+    '<button class="btn primary" id="research-goal-btn" type="button">Research it</button>' +
     '</div>' +
-    '</div>' +
-    '<div id="study-search-box" hidden>' +
-    '<input id="study-search-q" type="text" maxlength="120" placeholder="What do you want to study? e.g. the Merton model of credit risk">' +
-    '<div class="doc-row">' +
-    '<input id="study-search-topic" type="text" maxlength="40" placeholder="What does it matter for? (optional)">' +
-    '<button class="btn primary" id="study-search-btn" type="button">Search &amp; write the note</button>' +
-    '</div>' +
-    '</div>' +
-    '<p class="doc-hint" id="study-doc-hint"></p>' +
-    '<div class="search-progress" id="study-search-progress" hidden>' +
+    '<p class="doc-hint" id="research-goal-hint"></p>' +
+    '<div class="search-progress" id="research-progress" hidden>' +
     '<span class="spinner" aria-hidden="true"></span>' +
-    '<span id="study-search-msg">Starting the search…</span>' +
+    '<span id="research-progress-msg">Starting the research…</span>' +
     '</div>';
-  const setDesc = (m) => {
-    card.querySelector("#study-doc-desc").textContent = m === "search"
-      ? "Name a topic and the search gathers the open textbooks and reference pages on it — Wikipedia, Wikibooks, Wikiversity, the arXiv papers — then the model writes them up as one saved note."
-      : "Paste any financial text — an article, a report excerpt, a regulation, a term sheet — and the model writes it up as one saved note, in the centre with the rest.";
-  };
-  card.querySelectorAll("#study-doc-modes .cmode").forEach((b) =>
-    b.addEventListener("click", () => {
-      if (STUDY.aiBusy) return;
-      STUDY.searchMode = b.dataset.smode;
-      card.querySelectorAll("#study-doc-modes .cmode").forEach((x) =>
-        x.classList.toggle("active", x === b));
-      card.querySelector("#study-paste-box").hidden = STUDY.searchMode !== "paste";
-      card.querySelector("#study-search-box").hidden = STUDY.searchMode !== "search";
-      setDesc(STUDY.searchMode);
-    }));
-  setDesc("paste");
-  card.querySelector("#study-doc-btn").addEventListener("click", studySubmitDoc);
-  card.querySelector("#study-search-btn").addEventListener("click", studySubmitSearch);
-  card.querySelector("#study-search-q").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") studySubmitSearch();
+  card.querySelector("#research-goal-btn").addEventListener("click", researchSubmit);
+  card.querySelector("#research-goal").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) researchSubmit();
   });
   return card;
 }
 
-async function studySubmitDoc() {
-  if (STUDY.aiBusy) return;
-  const text = $("#study-doc-text").value.trim();
-  const topic = $("#study-doc-topic").value.trim();
-  const btn = $("#study-doc-btn");
-  const hint = $("#study-doc-hint");
-  if (text.length < 200) {
-    hint.textContent = "That’s not much to read — a few hundred words at least.";
+async function researchSubmit() {
+  if (RESEARCH.runBusy) return;
+  const goal = ($("#research-goal")?.value || "").trim();
+  const hint = $("#research-goal-hint");
+  const prog = $("#research-progress");
+  const msg = $("#research-progress-msg");
+  const btn = $("#research-goal-btn");
+  if (goal.length < 10) {
+    hint.textContent = "That's not much of a goal — a sentence or two at least.";
     return;
   }
-  STUDY.aiBusy = true;
+  RESEARCH.runBusy = true;
   btn.disabled = true;
-  btn.textContent = "Writing…";
-  hint.textContent = "The model is reading it — a long document can take a minute or two.";
-  try {
-    const n = await api("/api/study/ai", { method: "POST", body: { text, topic } });
-    $("#study-doc-text").value = "";
-    $("#study-doc-topic").value = "";
-    hint.textContent = "";
-    STUDY.notes = null; // the saved note joins the list on the way back
-    go("#study/" + encodeURIComponent(n.id));
-  } catch (e) {
-    hint.textContent = e.message;
-  } finally {
-    STUDY.aiBusy = false;
-    btn.disabled = false;
-    btn.textContent = "Write the note";
-  }
-}
-
-async function studySubmitSearch() {
-  if (STUDY.aiBusy) return;
-  const q = ($("#study-search-q")?.value || "").trim();
-  const topic = ($("#study-search-topic")?.value || "").trim();
-  const hint = $("#study-doc-hint");
-  const prog = $("#study-search-progress");
-  const msg = $("#study-search-msg");
-  const btn = $("#study-search-btn");
-  if (!q) { hint.textContent = "Type what you want to study first."; return; }
-  if (q.length < 4) {
-    hint.textContent = "Give me a topic — a few words at least.";
-    return;
-  }
-  STUDY.aiBusy = true;
-  btn.disabled = true;
+  btn.textContent = "Researching…";
+  hint.textContent = "";
   prog.hidden = false;
-  msg.textContent = "Starting the search…";
+  msg.textContent = "Starting the research…";
   try {
-    const job = await api("/api/study/search", { method: "POST", body: { query: q, topic } });
-    studyPollSearch(job.id);
+    const job = await api("/api/research/run", { method: "POST", body: { goal } });
+    RESEARCH.runId = job.id;
+    researchPollRun(job.id);
   } catch (e) {
     prog.hidden = true;
     hint.textContent = e.message;
   } finally {
-    STUDY.aiBusy = false;
+    RESEARCH.runBusy = false;
     btn.disabled = false;
+    btn.textContent = "Research it";
   }
 }
 
-function studyPollSearch(id) {
-  stopStudySearchPoll();
+function researchPollRun(id) {
+  stopResearchPoll();
   const tick = async () => {
     let job;
     try {
-      job = await api("/api/study/search/" + encodeURIComponent(id));
+      job = await api("/api/research/run/" + encodeURIComponent(id));
     } catch {
       return; // a transient poll failure; the next tick retries
     }
     // The card may be gone if the reader left the pane; work around it.
-    const prog = $("#study-search-progress");
-    const msg = $("#study-search-msg");
-    const hint = $("#study-doc-hint");
+    const prog = $("#research-progress");
+    const msg = $("#research-progress-msg");
+    const hint = $("#research-goal-hint");
     const lines = job.progress && job.progress.length ? job.progress : [];
     if (msg) msg.textContent = lines[lines.length - 1] ||
       (job.status === "running" ? "Working…" : job.message || job.status);
     if (job.status === "running") return;
-    stopStudySearchPoll();
+    stopResearchPoll();
+    RESEARCH.runId = null;
     if (prog) prog.hidden = true;
-    if (job.status === "done" && job.note) {
-      STUDY.notes = null; // the saved note joins the list on the way back
+    if (job.status === "done" && job.report) {
+      RESEARCH.reports = null; // the saved report joins the list on the way back
+      VAULT.refresh(); // the worker saved it on the server; the mirror is stale
       if (hint) hint.textContent = "";
-      if (location.hash === "#study")
-        go("#study/" + encodeURIComponent(job.note.id));
+      if ((location.hash === "#research"))
+        go("#research/" + encodeURIComponent(job.report.id));
+      else
+        toast("Research report saved: " + job.report.title);
     } else if (hint) {
       const names = (job.sources || []).map((s) => s.title).slice(0, 5).join(" · ");
-      hint.textContent = (job.message || "The search finished.") +
+      hint.textContent = (job.message || "The run finished.") +
         (names ? " What it found: " + names + "." : "");
     }
   };
   tick(); // fire once now, then on the interval
-  STUDY.searchPoll = setInterval(tick, 4000);
+  RESEARCH.runPoll = setInterval(tick, 4000);
 }
 
-async function renderStudyNote(id) {
-  studyStatus("Reading the note…");
-  const body = $("#study-body");
+async function renderResearchReport(id) {
+  researchStatus("Reading the report…");
+  const body = $("#research-body");
   try {
-    const n = await api("/api/study/" + encodeURIComponent(id));
-    studyStatus("");
+    const n = await api("/api/research/" + encodeURIComponent(id));
+    researchStatus("");
     body.innerHTML = "";
     const back = document.createElement("a");
     back.className = "study-back";
-    back.href = "#study";
-    back.textContent = "← All notes";
+    back.href = "#research";
+    back.textContent = "← All reports";
     body.appendChild(back);
     const card = document.createElement("div");
     card.className = "study-note";
@@ -874,22 +921,49 @@ async function renderStudyNote(id) {
       b.className = "ai-badge";
       b.textContent = n.sources && n.sources.length
         ? "AI-written from " + n.sources.length + " web source" + (n.sources.length > 1 ? "s" : "")
-        : "AI-written from your document";
+        : "AI-written";
       meta.appendChild(b);
     }
     const mins = document.createElement("span");
     mins.className = "mins";
     mins.textContent = n.minutes + " min read";
     meta.appendChild(mins);
+    if (n.created) {
+      const when = document.createElement("span");
+      when.className = "mins";
+      when.textContent = n.created;
+      meta.appendChild(when);
+    }
     const h1 = document.createElement("h1");
     h1.textContent = n.title;
     card.appendChild(meta);
     card.appendChild(h1);
+    if (n.goal) {
+      const g = document.createElement("p");
+      g.className = "sn-goal";
+      g.textContent = "Goal: " + n.goal;
+      card.appendChild(g);
+    }
     if (n.summary) {
       const s = document.createElement("p");
       s.className = "sn-sum";
       s.textContent = n.summary;
       card.appendChild(s);
+    }
+    if (Array.isArray(n.ties) && n.ties.length) {
+      const t = document.createElement("div");
+      t.className = "sn-ties";
+      const strong = document.createElement("strong");
+      strong.textContent = "How this ties into your data";
+      t.appendChild(strong);
+      const ul = document.createElement("ul");
+      n.ties.forEach((line) => {
+        const li = document.createElement("li");
+        li.textContent = line;
+        ul.appendChild(li);
+      });
+      t.appendChild(ul);
+      card.appendChild(t);
     }
     if (Array.isArray(n.sources) && n.sources.length) {
       const anchors = n.sources
@@ -921,41 +995,41 @@ async function renderStudyNote(id) {
       const d = document.createElement("button");
       d.className = "btn ghost study-delete";
       d.type = "button";
-      d.textContent = "Delete this note";
-      d.addEventListener("click", () => deleteStudy(n.id));
+      d.textContent = "Delete this report";
+      d.addEventListener("click", () => deleteResearch(n.id));
       card.appendChild(d);
     }
     body.appendChild(card);
     reveal(body);
   } catch (e) {
-    studyStatus(e.message, true);
+    researchStatus(e.message, true);
     body.innerHTML = "";
   }
 }
 
-async function deleteStudy(id) {
+async function deleteResearch(id) {
   const btn = $(".study-delete");
   if (btn) { btn.disabled = true; btn.textContent = "Deleting…"; }
   try {
-    await api("/api/study/" + encodeURIComponent(id), { method: "DELETE" });
-    STUDY.notes = null;
-    go("#study");
+    await api("/api/research/" + encodeURIComponent(id), { method: "DELETE" });
+    RESEARCH.reports = null;
+    go("#research");
   } catch (e) {
-    if (btn) { btn.disabled = false; btn.textContent = "Delete this note"; }
-    studyStatus(e.message, true);
+    if (btn) { btn.disabled = false; btn.textContent = "Delete this report"; }
+    researchStatus(e.message, true);
   }
 }
 
-function resolveStudy(seg) {
-  showPane("study");
+function resolveResearch(seg) {
+  showPane("research");
   const nid = seg ? decodeURIComponent(seg) : null;
-  STUDY.id = nid;
-  syncNav("study", nid);
-  $("#study-title").textContent = "Reference";
-  if (STUDY.notes === null) loadStudy();
-  else if (nid) renderStudyNote(nid);
-  else renderStudyList();
-  reveal($("#tab-study"));
+  RESEARCH.id = nid;
+  syncNav("research", nid);
+  $("#research-title").textContent = "Research";
+  if (RESEARCH.reports === null) loadResearch();
+  else if (nid) renderResearchReport(nid);
+  else renderResearchList();
+  reveal($("#tab-research"));
 }
 
 /* ---------------- Settings · bring your own model key ---------------- */
@@ -986,8 +1060,66 @@ function resolveSettings() {
   $("#set-model").value = LLM.model;
   setMsg(LLM.key ? "Saved in this browser. It is sent with each request and never stored on the server." : "", false);
   setEffective();
+  vaultSummary();
+  VAULT.refresh().then(vaultSummary);
   reveal($("#tab-settings"));
 }
+
+/* ---------------- Settings · your data (the vault, one file) ---------------- */
+
+function vaultSummary() {
+  const el = $("#vault-summary");
+  if (!el) return;
+  const s = (VAULT.data && VAULT.data.sections) || {};
+  const count = (v) => Array.isArray(v) ? v.length
+    : (v && typeof v === "object") ? Object.keys(v).length : 0;
+  const bits = [];
+  const add = (n, singular, plural) => {
+    if (n) bits.push(n + " " + (n === 1 ? singular : plural));
+  };
+  add(count(s.portfolio && s.portfolio.positions), "holding", "holdings");
+  add(count(s.notes && s.notes.pages), "note page", "note pages");
+  add(count(s.risk && s.risk.moves), "risk move", "risk moves");
+  add(count(s.roster && s.roster.funds), "followed fund", "followed funds");
+  add(count(s.research && s.research.reports), "research report", "research reports");
+  if (s.economy) bits.push("the economy tree");
+  const when = VAULT.data && VAULT.data.updated
+    ? new Date(VAULT.data.updated * 1000).toLocaleDateString("en-US",
+        { month: "short", day: "numeric", year: "numeric" }) : "";
+  el.textContent = bits.length
+    ? "On file: " + bits.join(", ") + (when ? " — updated " + when : "") + "."
+    : "Nothing on file yet — add holdings, save notes, or research a goal, and it will appear here.";
+}
+
+$("#vault-export").addEventListener("click", () => {
+  const st = $("#vault-status");
+  if (!VAULT.export()) {
+    st.className = "status error";
+    st.textContent = "There is no file to download yet — nothing has been saved.";
+    return;
+  }
+  st.className = "status";
+  st.textContent = "longview.json is downloading — that is your whole data.";
+});
+
+$("#vault-import").addEventListener("click", () => $("#vault-file").click());
+
+$("#vault-file").addEventListener("change", async (e) => {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  const st = $("#vault-status");
+  st.className = "status";
+  st.textContent = "Importing…";
+  try {
+    await VAULT.importFile(file);
+    vaultSummary();
+    st.textContent = "Imported — that file is the app's data now.";
+  } catch (err) {
+    st.className = "status error";
+    st.textContent = err.message;
+  }
+});
 
 function settingsForm() {
   return { base: $("#set-base").value.trim(),
@@ -1356,7 +1488,7 @@ async function runLab() {
   }
 }
 
-/* the "AI runs it" job: 4 s polls like the study search, then the result */
+/* the "AI runs it" job: 4 s polls like the research run, then the result */
 function strategyPoll(id, tab) {
   return new Promise((resolve) => {
     stopLabPoll();
@@ -4455,6 +4587,7 @@ $("#dir-q").addEventListener("keydown", (e) => {
 });
 wsRestoreAll();
 applyHash();
+VAULT.sync();   // the newer of the server file and this mirror wins
 (async () => {
   try {
     await api("/api/strategies"); // warm cache

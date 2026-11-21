@@ -7,13 +7,15 @@ import json
 
 import pytest
 
-from app import funds
+from app import funds, vault
 
 
 @pytest.fixture
 def roster_path(tmp_path, monkeypatch):
-    p = tmp_path / "roster.json"
-    monkeypatch.setattr(funds, "ROSTER_PATH", p)
+    # The roster is a section of the one vault file; the file this
+    # fixture points at is the vault file itself.
+    p = tmp_path / "longview.json"
+    monkeypatch.setattr(vault, "VAULT_PATH", p)
     return p
 
 
@@ -26,7 +28,7 @@ def test_active_roster_seeds_from_defaults(roster_path):
     assert [f["key"] for f in roster][:3] == ["berkshire", "bridgewater", "deshaw"]
     assert len(roster) == len(funds.FUNDS)
     assert roster_path.exists()
-    saved = json.loads(roster_path.read_text())
+    saved = json.loads(roster_path.read_text())["sections"]["roster"]
     assert saved["v"] == funds._ROSTER_VERSION
     assert [f["key"] for f in saved["funds"]] == [f["key"] for f in roster]
 
@@ -59,7 +61,8 @@ def test_add_fund_appends_and_saves(roster_path, monkeypatch):
     assert entry["manager"] == ""
     assert entry["cik"] == 9999001                # stored as an int
     assert roster[-1] == entry
-    assert len(json.loads(roster_path.read_text())["funds"]) == len(funds.FUNDS) + 1
+    saved = json.loads(roster_path.read_text())["sections"]["roster"]
+    assert len(saved["funds"]) == len(funds.FUNDS) + 1
 
 
 def test_add_rejects_filer_already_on_roster(roster_path, monkeypatch):
@@ -118,7 +121,7 @@ def test_remove_fund_saves_the_smaller_roster(roster_path):
     removed, roster = funds.remove_fund("pershing")
     assert removed["key"] == "pershing"
     assert "pershing" not in {f["key"] for f in roster}
-    saved = json.loads(roster_path.read_text())["funds"]
+    saved = json.loads(roster_path.read_text())["sections"]["roster"]["funds"]
     assert "pershing" not in {f["key"] for f in saved}
     assert len(saved) == len(funds.FUNDS) - 1
 

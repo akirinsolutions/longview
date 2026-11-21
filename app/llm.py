@@ -18,6 +18,12 @@ passed through to the model provider, and is forgotten; a
 server-deployed key lives in the environment. Either way, one model
 answers everything on the request.
 
+The base URL is vetted before any call (``validate_base``): a hosted
+instance must not be a proxy into someone else's intranet or at a
+cloud metadata address, so the app only calls https addresses that
+resolve to public hosts, plus the loopback over plain http for a model
+running on the reader's own machine.
+
 Only the standard library plus the existing ``httpx`` dependency.
 """
 
@@ -26,9 +32,12 @@ from __future__ import annotations
 import base64
 import binascii
 import contextvars
+import ipaddress
 import json
 import os
+import socket
 from typing import Any, Optional
+from urllib.parse import urlparse
 
 import httpx
 
@@ -70,6 +79,69 @@ def parse_header(raw: str | None) -> Optional[dict]:
         if isinstance(value, str) and value.strip():
             out[field] = value.strip()
     return out or None
+
+
+def validate_base(base: str) -> Optional[str]:
+    """Check a model base URL before any call is made with it.
+
+    Returns a plain-English problem, or None when the address may be
+    called. The rules:
+
+    - https may be used for any host, but only when its name resolves
+      to public addresses. Private (10/8, 172.16/12, 192.168/16),
+      link-local (169.254/16 — the cloud metadata address), and other
+      non-public targets are refused: a public instance must not fetch
+      from a reader's intranet.
+    - plain http may be used only for the loopback (127.0.0.1,
+      ::1, localhost) — the shape of a self-host pointed at a model
+      running on the reader's own machine.
+    - any other scheme is refused outright.
+
+    The name is resolved and *every* answer is checked; a name that
+    answers with even one non-public address is refused. (A name whose
+    DNS answer changes between the check and the connect — a rebinding
+    trick — is the residual risk this design accepts; the hosts it
+    could reach are the app's own container, nothing shared.)
+    """
+    try:
+        u = urlparse((base or "").strip())
+    except Exception:
+        return "That model address doesn't look like an address — it " \
+               "should look like https://provider.example.com/v1."
+    if u.scheme not in ("http", "https"):
+        return f"Model addresses use https (or http for a model on your " \
+               f"own machine) — “{u.scheme or 'no scheme'}://” is neither."
+    host = u.hostname
+    if not host:
+        return "That model address has no host in it — it should look " \
+               "like https://provider.example.com/v1."
+    port = u.port or (443 if u.scheme == "https" else 80)
+    try:
+        infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
+    except (socket.gaierror, OSError):
+        return "I couldn't look up the name in that model address — is " \
+               "it spelled right?"
+    except Exception:
+        return "That model address didn't look up cleanly — check it in " \
+               "Settings."
+    for info in infos:
+        try:
+            ip = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            continue
+        if ip.is_loopback:
+            continue
+        if ip.is_global and not ip.is_private and not ip.is_reserved \
+                and not ip.is_unspecified:
+            continue
+        if u.scheme == "http":
+            return "Plain http is only for a model running on your own " \
+                   "machine (127.0.0.1). For a hosted model, use its " \
+                   "https address."
+        return "That model address points at a private or internal " \
+               "network. I only call public https addresses (or your " \
+               "own machine over http)."
+    return None
 
 
 def resolve(config: Optional[dict] = None) -> dict:
@@ -128,6 +200,9 @@ def post_chat(system: str, user: str, config: Optional[dict] = None,
     cfg = resolve(config)
     if not cfg["key"]:
         raise RuntimeError("no key")
+    problem = validate_base(cfg["base"])
+    if problem:
+        raise RuntimeError(problem)
     payload = {
         "model": cfg["model"], "temperature": temperature,
         "max_tokens": max_tokens,

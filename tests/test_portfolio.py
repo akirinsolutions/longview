@@ -9,13 +9,15 @@ import json
 
 import pytest
 
-from app import funds, market_data, portfolio
+from app import funds, market_data, portfolio, vault
 
 
 @pytest.fixture
 def portfolio_path(tmp_path, monkeypatch):
-    p = tmp_path / "portfolio.json"
-    monkeypatch.setattr(portfolio, "PORTFOLIO_PATH", p)
+    # The one file for everything: the portfolio section lives inside
+    # the vault file, so "the portfolio file" is the vault file.
+    p = tmp_path / "longview.json"
+    monkeypatch.setattr(vault, "VAULT_PATH", p)
     return p
 
 
@@ -85,7 +87,7 @@ def test_missing_file_is_an_empty_portfolio(portfolio_path):
 
 def test_add_saves_and_reloads(portfolio_path):
     portfolio.add_position(_pos())
-    saved = json.loads(portfolio_path.read_text())
+    saved = json.loads(portfolio_path.read_text())["sections"]["portfolio"]
     assert saved["v"] == portfolio._PORTFOLIO_VERSION
     assert len(saved["positions"]) == 1
     assert portfolio.load_portfolio()[0]["ticker"] == "AAPL"
@@ -98,7 +100,9 @@ def test_corrupt_file_is_an_empty_portfolio(portfolio_path):
 
 def test_wrong_version_file_is_an_empty_portfolio(portfolio_path):
     portfolio_path.write_text(json.dumps(
-        {"v": 99, "updated": 0, "positions": [{"ticker": "X"}]}))
+        {"v": 1, "updated": 0,
+         "sections": {"portfolio": {"v": 99, "updated": 0,
+                                    "positions": [{"ticker": "X"}]}}}))
     assert portfolio.load_portfolio() == []
 
 

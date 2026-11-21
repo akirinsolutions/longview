@@ -40,6 +40,8 @@ import xml.etree.ElementTree as ET
 from datetime import date, datetime
 from pathlib import Path
 
+from . import vault
+
 import httpx
 
 CACHE_DIR = Path(__file__).resolve().parent.parent / "cache" / "13f"
@@ -108,15 +110,14 @@ _CACHE_VERSION = 2
 # filings — no extra SEC traffic).
 # ---------------------------------------------------------------------------
 
-ROSTER_PATH = Path(__file__).resolve().parent.parent / "data" / "roster.json"
+_SECTION = "roster"
 _ROSTER_VERSION = 1
 
 
 def _load_roster_file() -> list[dict] | None:
-    """The saved roster, or None if the file is missing or corrupt."""
-    try:
-        d = json.loads(ROSTER_PATH.read_text())
-    except (OSError, json.JSONDecodeError):
+    """The saved roster, or None if the vault holds none or a bad one."""
+    d = vault.read_section(_SECTION)
+    if d is None:
         return None
     if d.get("v") != _ROSTER_VERSION:
         return None
@@ -129,13 +130,11 @@ def _load_roster_file() -> list[dict] | None:
 
 
 def _save_roster(entries: list[dict]) -> None:
-    """The roster is real data (the user's own list), written atomically."""
-    ROSTER_PATH.parent.mkdir(parents=True, exist_ok=True)
-    tmp = ROSTER_PATH.parent / (ROSTER_PATH.name + ".tmp")
-    tmp.write_text(json.dumps({"v": _ROSTER_VERSION,
-                               "updated": int(time.time()),
-                               "funds": entries}, indent=1))
-    tmp.replace(ROSTER_PATH)
+    """The roster is real data (the user's own list); the vault writes
+    it atomically."""
+    vault.write_section(_SECTION, {"v": _ROSTER_VERSION,
+                                   "updated": int(time.time()),
+                                   "funds": entries})
 
 
 def active_roster() -> list[dict]:

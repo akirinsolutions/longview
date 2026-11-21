@@ -24,13 +24,11 @@ histories, and ``ai_compare()`` adds the model's read of them.
 from __future__ import annotations
 
 import json
-import os
 import re
 import threading
 from datetime import datetime, timezone
-from pathlib import Path
 
-from . import economy_series
+from . import economy_series, vault
 from .economy_tree import (REGION_NAMES, REGION_SHARES, REGION_GROWTH,
                            TREE, WORLD_GROWTH, _blend)
 
@@ -81,14 +79,7 @@ HORIZONS = (5, 10, 15, 20)
 MIN_GROWTH = -5.0
 MAX_GROWTH = 25.0
 
-DATA_PATH = Path(os.environ.get(
-    "LONGVIEW_ECONOMY_TREE",
-    os.environ.get(
-        "PROOF_ECONOMY_TREE",
-        str(Path(__file__).resolve().parent.parent
-            / "data" / "economy_tree.json"),
-    ),
-))
+_SECTION = "economy"
 
 _LOCK = threading.Lock()
 
@@ -174,13 +165,13 @@ def validate_tree(node: dict, level: int = 0,
 
 def _load() -> dict:
     """The saved tree when it is whole, else the authored one."""
-    if DATA_PATH.exists():
+    raw = vault.read_section(_SECTION)
+    if raw is not None:
         try:
-            raw = json.loads(DATA_PATH.read_text(encoding="utf-8"))
             tree = raw.get("tree") if isinstance(raw, dict) else raw
             if isinstance(tree, dict) and not validate_tree(tree):
                 return tree
-        except (OSError, ValueError, TypeError):
+        except (ValueError, TypeError):
             pass
     return _copy(TREE)
 
@@ -189,14 +180,12 @@ _TREE = _load()
 
 
 def _save(tree: dict) -> None:
-    """Write the edited tree atomically so a failed write changes nothing."""
-    DATA_PATH.parent.mkdir(parents=True, exist_ok=True)
+    """Write the edited tree to the vault; the write is atomic, so a
+    failed write changes nothing."""
     body = {"version": 1,
             "updated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "tree": tree}
-    tmp = DATA_PATH.with_name(DATA_PATH.name + ".tmp")
-    tmp.write_text(json.dumps(body, ensure_ascii=False), encoding="utf-8")
-    os.replace(tmp, DATA_PATH)
+    vault.write_section(_SECTION, body)
 
 
 def _authored() -> dict:
@@ -311,19 +300,16 @@ def meta() -> dict:
         "regions": list(REGION_NAMES),
         "series": economy_series.series_payload(),
         "series_note": SERIES_NOTE,
-        "edited": DATA_PATH.exists(),
+        "edited": vault.read_section(_SECTION) is not None,
         "updated": _updated_at(),
     }
 
 
 def _updated_at() -> str | None:
-    if not DATA_PATH.exists():
+    raw = vault.read_section(_SECTION)
+    if raw is None:
         return None
-    try:
-        raw = json.loads(DATA_PATH.read_text(encoding="utf-8"))
-        return raw.get("updated") if isinstance(raw, dict) else None
-    except (OSError, ValueError):
-        return None
+    return raw.get("updated") if isinstance(raw, dict) else None
 
 
 # ---------------------------------------------------------------------------
@@ -335,10 +321,7 @@ def reset() -> dict:
     global _TREE
     with _LOCK:
         _TREE = _authored()
-        try:
-            DATA_PATH.unlink()
-        except FileNotFoundError:
-            pass
+        vault.write_section(_SECTION, None)
     return meta()
 
 

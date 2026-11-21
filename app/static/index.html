@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Longview</title>
-<link rel="stylesheet" href="/static/style.css?v=40">
+<link rel="stylesheet" href="/static/style.css?v=41">
 </head>
 <body class="at-landing">
 <div id="landing">
@@ -54,7 +54,7 @@
     </section>
 
     <section class="l-rules">
-      <div><b>No login.</b><span>Everything is per-browser; your state lives in this browser.</span></div>
+      <div><b>No login.</b><span>There is no account; everything you keep lives in one file you can carry.</span></div>
       <div><b>No lookahead.</b><span>A backtest only ever sees what was known that day.</span></div>
       <div><b>Open source.</b><span>One repository, MIT licensed — run it on your own machine.</span></div>
       <div><b>Your key, relayed, never stored.</b><span>It rides each request to your endpoint and is forgotten.</span></div>
@@ -72,7 +72,7 @@ open  http://127.0.0.1:8010</pre>
 
     <footer class="l-foot">
       <span>Longview — the filings, decoded.</span>
-      <span>MIT license · <a href="#docs" data-l="docs">Docs</a> · <a href="#study" data-l="app">Reference</a></span>
+      <span>MIT license · <a href="#docs" data-l="docs">Docs</a> · <a href="#research" data-l="app">Research</a></span>
     </footer>
   </div>
 </div>
@@ -104,7 +104,7 @@ open  http://127.0.0.1:8010</pre>
     <a class="nav" data-route="lab/results" href="#lab/results"><span class="stepno">3</span>Results</a>
   </nav>
   <nav class="nav-group">
-    <a class="nav" data-route="study" href="#study">Reference</a>
+    <a class="nav" data-route="research" href="#research">Research</a>
     <a class="nav" data-route="docs" href="#docs">Docs</a>
     <a class="nav" data-route="settings" href="#settings">Settings</a>
   </nav>
@@ -302,12 +302,12 @@ open  http://127.0.0.1:8010</pre>
     <p class="fineprint">A rounded reference picture of global household wealth — about $470T at the end of 2024, after the UBS Global Wealth Report 2025. Shares are whole percentages of the part above them; the dollars are derived from the total. Seven levels deep — six of detail, then where in the world it sits. The decade charts (2015–2024) read the reports' 56-market sample: the world's line is the report's own record, the four regions are anchored on its 2023 and 2024 tables and walked back at their stated since-2008 growth, and everything deeper is assumed — so the charts are the sample's history, not every household. Growth rates are nominal USD assumptions built on the published long-run record, not forecasts; the projections are that arithmetic, nothing more. Static, not live data, and not accounting.</p>
   </section>
 
-  <!-- ============ STUDY · the AI learning notes centre ============ -->
-  <section id="tab-study" class="tabpane">
-    <h2 id="study-title">Reference</h2>
-    <p id="study-lede" class="lede">Background reading on how money works — open textbooks and reference pages, gathered and written up as saved notes. Kept off the main nav on purpose: it's study material, not analysis.</p>
-    <p id="study-status" class="status"></p>
-    <div id="study-body"></div>
+  <!-- ============ RESEARCH · give it a goal ============ -->
+  <section id="tab-research" class="tabpane">
+    <h2 id="research-title">Research</h2>
+    <p id="research-lede" class="lede">Give it a goal — a sentence or two about what you want to understand or decide. It reads the open textbooks and papers on that goal, then writes one saved report, and its final part ties the findings to your own data.</p>
+    <p id="research-status" class="status"></p>
+    <div id="research-body"></div>
   </section>
 
   <!-- ============ SETTINGS · bring your own model key ============ -->
@@ -334,6 +334,17 @@ open  http://127.0.0.1:8010</pre>
       </div>
       <p id="set-status" class="status"></p>
     </div>
+    <div class="set-card">
+      <h3>Your data</h3>
+      <p>One file holds everything you keep in the app — portfolio, notes, risk moves, followed funds, research reports, the economy tree. Your browser mirrors it; on open the two compare and the newer one wins. Download the file to keep a copy, or import one back.</p>
+      <p id="vault-summary" class="dim"></p>
+      <div class="set-actions">
+        <button id="vault-export" class="btn" type="button">Download the file</button>
+        <button id="vault-import" class="btn" type="button">Import a file</button>
+        <input id="vault-file" type="file" accept=".json,application/json" hidden>
+      </div>
+      <p id="vault-status" class="status"></p>
+    </div>
     <p id="set-effective" class="dim"></p>
   </section>
 
@@ -349,12 +360,12 @@ open  http://127.0.0.1:8010</pre>
 python -m venv .venv
 .venv/bin/pip install -r requirements.txt
 .venv/bin/uvicorn app.main:app --port 8010</pre>
-      <p class="fineprint">Open <code>http://127.0.0.1:8010</code>. The <code>data/</code> directory is created on first write and holds your reference notes and the economy tree — it is private to your machine and untracked in the repository.</p>
+      <p class="fineprint">Open <code>http://127.0.0.1:8010</code>. On first write the app creates <code>data/longview.json</code> — one file holding every section: your portfolio, your notes, your risk moves, your followed funds, your research reports, the economy tree. It is private to your machine and untracked in the repository.</p>
     </div>
 
     <div class="doc-card">
       <h3>The model key</h3>
-      <p>Every feature that uses a language model — the ask, the risk fills, the AI backtest, the reference notes — resolves its model from the same place, in this order:</p>
+      <p>Every feature that uses a language model — the ask, the risk fills, the AI backtest, research — resolves its model from the same place, in this order:</p>
       <ol class="doc-order">
         <li><b>Your key, per request.</b> Set it in Settings (base URL, key, model). It is stored in this browser's local storage and sent with each request as an <code>X-Longview-LLM</code> header.</li>
         <li><b>The server's key.</b> If you have not set one, the app uses <code>LONGVIEW_LLM_KEY</code>, <code>LONGVIEW_LLM_BASE</code>, and <code>LONGVIEW_LLM_MODEL</code> from its environment (the old <code>PROOF_LLM_*</code> names are still read as a fallback).</li>
@@ -365,7 +376,8 @@ python -m venv .venv
 
     <div class="doc-card">
       <h3>Your data</h3>
-      <p>There is no login and no account. Your portfolio, notes, and the state of each lab run live in this browser's local storage; nothing you enter ever leaves except the market-data lookups and, when you use a key, your requests to your own model endpoint. Market prices come from public sources (Yahoo Finance, SEC EDGAR); the 13F data is the public filing data itself.</p>
+      <p>There is no login and no account. Everything you keep in the app lives in one file on the app's machine: <code>data/longview.json</code> — portfolio, notes, risk moves, followed funds, research reports, the economy tree. Your browser holds a mirror of it; when you open the app the two compare and the newer one wins.</p>
+      <p>In Settings you can download the file — that is your whole data, portable to any Longview — and import one back. Nothing you enter leaves except the market-data lookups (public sources: Yahoo Finance, SEC EDGAR — they see nothing of yours) and, when a model key is set, the requests to your own model endpoint: your question or goal, a digest of your data, and the key.</p>
     </div>
 
     <div class="doc-card">
@@ -709,6 +721,6 @@ python -m venv .venv
   </div>
 </div>
 <script src="/static/dcf.js?v=37"></script>
-<script src="/static/app.js?v=40"></script>
+<script src="/static/app.js?v=41"></script>
 </body>
 </html>

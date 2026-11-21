@@ -20,12 +20,11 @@ import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 
 
-from . import market_data, portfolio
+from . import market_data, portfolio, vault
 
-RISK_PATH = Path(__file__).resolve().parent.parent / "data" / "risk.json"
+_SECTION = "risk"
 _VERSION = 1
 
 _LOCK = threading.Lock()
@@ -42,10 +41,9 @@ _CURRENCY = re.compile(r"^[A-Z]{3}$")
 # ---------------------------------------------------------------------------
 
 def _load_file() -> dict | None:
-    """The saved moves, or None if the file is missing or corrupt."""
-    try:
-        d = json.loads(RISK_PATH.read_text())
-    except (OSError, json.JSONDecodeError):
+    """The saved moves, or None if the vault holds none or a bad one."""
+    d = vault.read_section(_SECTION)
+    if d is None:
         return None
     if d.get("v") != _VERSION or not isinstance(d.get("moves"), dict):
         return None
@@ -55,11 +53,9 @@ def _load_file() -> dict | None:
 def _save(moves: dict[str, float]) -> None:
     """The moves are the user's data, written atomically. Lock-free on
     purpose: the mutator below holds the lock across the write."""
-    RISK_PATH.parent.mkdir(parents=True, exist_ok=True)
-    tmp = RISK_PATH.parent / (RISK_PATH.name + ".tmp")
-    tmp.write_text(json.dumps({"v": _VERSION, "updated": int(time.time()),
-                               "moves": moves}, indent=1))
-    tmp.replace(RISK_PATH)
+    vault.write_section(_SECTION,
+                        {"v": _VERSION, "updated": int(time.time()),
+                         "moves": moves})
 
 
 def _clamp(x: float) -> float:

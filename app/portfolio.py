@@ -39,25 +39,23 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
-from pathlib import Path
 
-from . import funds, market_data
+from . import funds, market_data, vault
 
-PORTFOLIO_PATH = Path(__file__).resolve().parent.parent / "data" / "portfolio.json"
 _PORTFOLIO_VERSION = 1
+_SECTION = "portfolio"
 
 _lock = threading.Lock()
 
 
 # ---------------------------------------------------------------------------
-# Persistence (mirrors the roster's load/save pair)
+# Persistence: the vault's "portfolio" section (one file, the whole app)
 # ---------------------------------------------------------------------------
 
 def _load_portfolio_file() -> list[dict] | None:
-    """The saved positions, or None if the file is missing or corrupt."""
-    try:
-        d = json.loads(PORTFOLIO_PATH.read_text())
-    except (OSError, json.JSONDecodeError):
+    """The saved positions, or None if the vault holds none or a bad one."""
+    d = vault.read_section(_SECTION)
+    if d is None:
         return None
     if d.get("v") != _PORTFOLIO_VERSION:
         return None
@@ -69,18 +67,14 @@ def _load_portfolio_file() -> list[dict] | None:
 
 
 def _save_portfolio(entries: list[dict]) -> None:
-    """The portfolio is the user's real data, written atomically.
-
-    Lock-free on purpose: the mutators below hold the lock across the
-    read-modify-write, so the writer must not take it again (the roster's
-    save does the same).
+    """The portfolio is the user's real data; the vault writes it
+    atomically. Lock-free on purpose: the mutators below hold the lock
+    across the read-modify-write, so the writer must not take it again
+    (the roster's save does the same).
     """
-    PORTFOLIO_PATH.parent.mkdir(parents=True, exist_ok=True)
-    tmp = PORTFOLIO_PATH.parent / (PORTFOLIO_PATH.name + ".tmp")
-    tmp.write_text(json.dumps({"v": _PORTFOLIO_VERSION,
-                               "updated": int(time.time()),
-                               "positions": entries}, indent=1))
-    tmp.replace(PORTFOLIO_PATH)
+    vault.write_section(_SECTION, {"v": _PORTFOLIO_VERSION,
+                                   "updated": int(time.time()),
+                                   "positions": entries})
 
 
 def load_portfolio() -> list[dict]:

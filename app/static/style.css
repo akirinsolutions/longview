@@ -261,6 +261,9 @@ h3 {
   border-radius: 3px; padding: 20px 22px; max-width: 560px;
   display: flex; flex-direction: column; gap: 16px;
 }
+.set-card h3 { margin: 0; font-size: 16px; }
+.set-card p { margin: 0; color: var(--sub); font-size: 13.5px; line-height: 1.6; max-width: 60ch; }
+.set-card p.dim { color: var(--faint); }
 .set-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 #set-effective { margin-top: 18px; }
 .dim { color: var(--faint); }
@@ -1310,7 +1313,6 @@ tr.editing > td { background: var(--panel-2); }
 .study-doc .doc-row { display: flex; gap: 10px; margin-top: 10px; }
 .study-doc .doc-row input { flex: 1; }
 .study-doc .doc-hint { color: var(--faint); font-size: 12px; margin: 8px 0 0; }
-.study-doc #study-search-box input { margin-bottom: 4px; }
 
 /* study: web search progress (spinner + plain-English updates) */
 .search-progress {
@@ -1358,6 +1360,16 @@ tr.editing > td { background: var(--panel-2); }
   padding: 1px 5px; border-radius: 3px;
 }
 .study-delete { margin-top: 22px; }
+/* research: the goal a report was written for, and its ties part */
+.study-note .sn-goal { margin: 0 0 10px; color: var(--faint); font-size: 13.5px; line-height: 1.5; max-width: 72ch; }
+.study-note .sn-ties {
+  margin: 18px 0 6px; padding: 14px 16px;
+  border-left: 3px solid var(--accent); background: var(--panel-2);
+  border-radius: 0 var(--r) var(--r) 0;
+}
+.study-note .sn-ties strong { display: block; margin-bottom: 6px; font-size: 13px; }
+.study-note .sn-ties ul { margin: 0; }
+.study-note .sn-ties li { margin-bottom: 5px; }
 
 /* honor reduced motion */
 @media (prefers-reduced-motion: reduce) {

@@ -1,236 +1,411 @@
-"""The date-gated research layer, tested fully offline.
+"""Research: the goal-driven section (the old study centre's address).
 
-The RAM rule applies: no model, no network. A fake ``http_get`` plays
-the web — Wikipedia's revisions API and the arXiv Atom feed — and the
-tests check the one property that matters: on a simulated date D the
-researcher can only read what existed on or before D.
+The reference corpus it used to serve is gone from the section; what
+remains is the pipeline — the small markdown renderer, the report
+store in the vault's research section, the background run job (fake
+gather, fake model, every terminal state), and the routes.
 """
-from datetime import date, timedelta
+import json
+import time
 
-from app import research
+import pytest
 
+from app import llm, research, risk, vault, web
+from app.main import app
 
-class FakeResp:
-    def __init__(self, json_data=None, text=""):
-        self._j = json_data
-        self.text = text
-
-    def json(self):
-        return self._j
+from fastapi.testclient import TestClient
 
 
-#: title -> [(revid, timestamp, lead wikitext)], newest last
-WIKI_PAGES = {
-    "Apple Inc.": [
-        ("1000", "2015-03-10T12:00:00Z",
-         "== History ==\nApple is a company that made the iPhone by 2015."),
-        ("1001", "2016-05-01T09:00:00Z",
-         "Apple announced the Vision Pro in 2016."),
-    ],
-    "BRK": [
-        ("2000", "2017-01-01T00:00:00Z",
-         "Berkshire exists in this universe from 2017 onward."),
-    ],
-}
+def _client():
+    return TestClient(app)
 
 
-def atom(entries) -> str:
-    body = "".join(
-        f"<entry><title>{t}</title><id>http://arxiv.org/abs/x{i}</id>"
-        f"<summary>{s}</summary><published>{p}T10:00:00Z</published></entry>"
-        for i, (t, s, p) in enumerate(entries))
-    return f'<feed xmlns="http://www.w3.org/2005/Atom">{body}</feed>'
+@pytest.fixture(autouse=True)
+def _no_key(monkeypatch):
+    for var in ("LONGVIEW_LLM_KEY", "PROOF_LLM_KEY"):
+        monkeypatch.delenv(var, raising=False)
 
 
-class FakeHttp:
-    """Plays the web. ``ranged_atom`` answers the submittedDate range
-    query, ``plain_atom`` the undated one; ``raise_on`` (a substring of
-    any param value) makes the call blow up like a real one can."""
-
-    def __init__(self, wiki=WIKI_PAGES, ranged_atom="", plain_atom="",
-                 raise_on=None):
-        self.wiki = wiki
-        self.ranged_atom = ranged_atom
-        self.plain_atom = plain_atom
-        self.raise_on = raise_on
-        self.calls: list[tuple[str, dict]] = []
-
-    def __call__(self, url: str, params: dict, timeout: float = 30.0) -> FakeResp:
-        params = dict(params)
-        self.calls.append((url, params))
-        if self.raise_on and any(self.raise_on in str(v) for v in params.values()):
-            raise RuntimeError("the web is on fire")
-        if url.endswith("/w/api.php"):
-            return self._wiki(url, params)
-        if url.startswith(research.ARXIV_URL):
-            text = self.ranged_atom if "submittedDate" in params.get("search_query", "") \
-                else self.plain_atom
-            return FakeResp(text=text)
-        return FakeResp({"ok": False})
-
-    def _wiki(self, url, params):
-        title = params.get("titles", "")
-        if "revids" in params:
-            rev = next((r for r in self.wiki.get(title, [])
-                        if r[0] == params["revids"]), None)
-            if rev is None:
-                return FakeResp({"query": {"pages": {}}})
-            return FakeResp({"query": {"pages": {"1": {"id": 1, "revisions": [
-                {"revid": rev[0], "timestamp": rev[1], "*": rev[2]}]}}}})
-        start = (params.get("rvstarttimestamp") or "")[:10]
-        page = self.wiki.get(title)
-        if not page:
-            return FakeResp({"query": {"pages": {"-1": {
-                "id": -1, "title": title, "missing": ""}}}})
-        eligible = [r for r in page if r[1][:10] <= start]
-        chosen = max(eligible or page, key=lambda r: r[1])
-        return FakeResp({"query": {"pages": {"1": {
-            "id": 1, "title": title,
-            "revisions": [{"revid": chosen[0], "timestamp": chosen[1]}]}}}})
+@pytest.fixture
+def c():
+    return _client()
 
 
-def wiki_calls(fake, **want):
-    return [p for u, p in fake.calls
-            if u.endswith("/w/api.php") and all(p.get(k) == v for k, v in want.items())]
+def _poll_run(job_id, deadline=15):
+    end = time.time() + deadline
+    while time.time() < end:
+        job = research.get_run_job(job_id)
+        if job is not None and job["status"] != "running":
+            return job
+        time.sleep(0.05)
+    return research.get_run_job(job_id)
+
+
+def _fake_gather(text=("word " * 900).strip(),
+                 sources=None):
+    sources = sources if sources is not None else [
+        {"title": "Merton model",
+         "url": "https://en.wikipedia.org/wiki/Merton_model",
+         "label": "Wikipedia"},
+        {"title": "A paper",
+         "url": "https://arxiv.org/abs/2", "label": "arXiv"}]
+
+    def gather(query, report, http_get=None):
+        report("reading…")
+        return text, [dict(s) for s in sources]
+    return gather
+
+
+def _answer(title="Credit risk, structurally",
+            field="Credit",
+            summary="Default as a boundary option.",
+            ties=None,
+            body=None):
+    return json.dumps({
+        "title": title, "field": field, "summary": summary,
+        "body": body if body is not None else
+            "## The idea\n\n" + ("word " * 400).strip(),
+        "ties": ties if ties is not None else []})
 
 
 # ---------------------------------------------------------------------------
-# Wikipedia: the no-lookahead gate
+# The renderer (carried over from the old study module)
 # ---------------------------------------------------------------------------
 
-def test_wiki_reads_only_what_was_known():
-    fake = FakeHttp()
-    r = research.research_as_of("2015-03-15", ["AAPL"],
-                                {"names": {"AAPL": "Apple Inc."}},
-                                http_get=fake)
-    assert "made the iPhone by 2015" in r["AAPL"]
-    assert "Vision Pro" not in r["AAPL"]          # that revision came later
-    lookup = wiki_calls(fake, rvstarttimestamp="2015-03-15T23:59:59Z")
-    assert lookup and lookup[0]["rvdir"] == "older"
-    assert "_skips" not in r
+def test_renderer_escapes_html():
+    assert "&lt;script&gt;" in research.render_markdown("<script>")
+    assert "<script>" not in research.render_markdown("<script>")
 
 
-def test_page_created_after_the_date_is_skipped():
-    fake = FakeHttp()
-    r = research.research_as_of("2015-03-15", ["BRK"], http_get=fake)
-    assert r["BRK"] is None
-    assert "page yet" in r["_skips"]["BRK"]
-    # and its content was never even fetched
-    assert wiki_calls(fake, revids="2000") == []
+def test_renderer_sections_and_lists():
+    h = research.render_markdown(
+        "# Top\n\n## One\n\ntext\n\n- a\n- b\n\n1. x\n2. y")
+    assert "<h2>Top</h2>" in h
+    assert "<h2>One</h2>" in h
+    assert "<li>a</li>" in h and "<li>b</li>" in h
+    assert "<li>x</li>" in h and "<li>y</li>" in h
 
 
-def test_missing_page_is_skipped_honestly():
-    fake = FakeHttp()
-    r = research.research_as_of("2015-03-15", ["NOSUCH"], http_get=fake)
-    assert r["NOSUCH"] is None
-    assert "no Wikipedia page" in r["_skips"]["NOSUCH"]
+def test_renderer_quote_rule_and_inline():
+    h = research.render_markdown(
+        "> quoted\n\n**bold** and *italic* and `code`")
+    assert "<blockquote>quoted</blockquote>" in h
+    assert "<strong>bold</strong>" in h
+    assert "<em>italic</em>" in h
+    assert "<code>code</code>" in h
 
 
-def test_content_is_cached_by_revision():
-    fake = FakeHttp()
-    res = research.Researcher(http_get=fake)
-    res("2015-03-15", ["AAPL"], {"names": {"AAPL": "Apple Inc."}})
-    res("2015-06-01", ["AAPL"], {"names": {"AAPL": "Apple Inc."}})
-    # two lookup calls (one per date), but the 2015 revision's content
-    # is fetched exactly once — the second date resolved to the same rev
-    assert len(wiki_calls(fake, rvstarttimestamp="2015-03-15T23:59:59Z")) == 1
-    assert len(wiki_calls(fake, rvstarttimestamp="2015-06-01T23:59:59Z")) == 1
-    assert len(wiki_calls(fake, revids="1000")) == 1
+def test_unknown_markup_is_harmless_text():
+    assert research.render_markdown("[link](x)") == "<p>[link](x)</p>"
 
 
 # ---------------------------------------------------------------------------
-# arXiv: submittedDate <= D, guaranteed client-side
+# The store
 # ---------------------------------------------------------------------------
 
-ARXIV_MIX = [
-    ("The 2014 rate model", "Abstract A", "2014-01-01"),
-    ("A paper of 2015-03-15", "Abstract B", "2015-03-15"),
-    ("A paper of 2015-03-16", "Abstract C", "2015-03-16"),
-    ("A paper of 2016", "Abstract D", "2016-01-01"),
-]
+def test_listing_shape_no_bodies():
+    research._save_reports([
+        {"id": "r-1", "kind": "ai", "title": "A", "field": "F",
+         "summary": "s", "goal": "g", "body": "b" * 200},
+        {"id": "r-2", "kind": "ai", "title": "B", "field": "F",
+         "summary": "s", "goal": "g", "body": "c" * 200,
+         "sources": [{"title": "T", "url": "https://x.y"}]}])
+    entries = research.listing()
+    assert [e["id"] for e in entries] == ["r-1", "r-2"]
+    for e in entries:
+        assert "body" not in e
+        assert e["words"] > 0 and e["minutes"] >= 1
+    assert entries[1]["sources"] == 1
 
 
-def test_arxiv_keeps_only_papers_already_submitted():
-    fake = FakeHttp(ranged_atom=atom(ARXIV_MIX))
-    r = research.research_as_of("2015-03-15", ["TSM"], http_get=fake)
-    assert "The 2014 rate model" in r["TSM"]
-    assert "A paper of 2015-03-15" in r["TSM"]      # submitted that day: known
-    assert "2015-03-16" not in r["TSM"]             # the next day: future
-    assert "A paper of 2016" not in r["TSM"]
-    arxiv = [p for u, p in fake.calls if u.startswith(research.ARXIV_URL)]
-    assert "submittedDate" in arxiv[0]["search_query"]
-    assert "201503152359" in arxiv[0]["search_query"]
+def test_get_report_renders_and_unknown_is_none():
+    research._save_reports([
+        {"id": "r-1", "kind": "ai", "title": "A", "field": "F",
+         "summary": "s", "goal": "g",
+         "body": "## Head\n\npara", "ties": ["one tie"]}])
+    rep = research.get_report("r-1")
+    assert rep is not None
+    assert rep["html"] == "<h2>Head</h2>\n<p>para</p>"
+    assert rep["ties"] == ["one tie"]
+    assert research.get_report("r-ghost") is None
 
 
-def test_arxiv_undated_fallback_still_cannot_peek():
-    # the ranged query returns nothing; the undated retry returns a mix —
-    # the client-side published check must drop the future entries
-    fake = FakeHttp(ranged_atom="", plain_atom=atom(ARXIV_MIX))
-    r = research.research_as_of("2015-03-15", ["TSM"], http_get=fake)
-    assert "The 2014 rate model" in r["TSM"]
-    assert "2015-03-16" not in r["TSM"]
-    assert "A paper of 2016" not in r["TSM"]
-    arxiv = [p for u, p in fake.calls if u.startswith(research.ARXIV_URL)]
-    assert len(arxiv) == 2 and "submittedDate" not in arxiv[1]["search_query"]
+def test_get_report_keeps_http_sources_only_and_caps():
+    sources = [{"title": f"t{i}", "url": u}
+               for i, u in enumerate(
+                   ["https://ok", "ftp://nope"] +
+                   ["https://x%d" % i for i in range(14)])]
+    research._save_reports([
+        {"id": "r-1", "kind": "ai", "title": "A", "field": "F",
+         "summary": "s", "goal": "g", "body": "b" * 200,
+         "sources": sources}])
+    rep = research.get_report("r-1")
+    assert len(rep["sources"]) == 12      # capped at 12, ftp dropped
+    assert all(s["url"].startswith("http") for s in rep["sources"])
 
 
-# ---------------------------------------------------------------------------
-# The budget, the failures, the names
-# ---------------------------------------------------------------------------
-
-def test_the_call_cap_stops_all_further_spending():
-    fake = FakeHttp()
-    res = research.Researcher(call_cap=2, http_get=fake)
-    r = res("2015-03-15", ["AAPL", "ZZZ"], {"names": {"AAPL": "Apple Inc."}})
-    # AAPL spends the whole budget (1 lookup + 1 content); ZZZ gets none
-    assert "made the iPhone by 2015" in r["AAPL"]
-    assert r["ZZZ"] is None
-    assert "budget" in r["_skips"]["ZZZ"]
-    assert len(fake.calls) == 2
+def test_delete_and_unknown_is_an_error():
+    research._save_reports([
+        {"id": "r-1", "kind": "ai", "title": "A", "field": "F",
+         "summary": "s", "goal": "g", "body": "b" * 200}])
+    research.delete_report("r-1")
+    assert research.listing() == []
+    with pytest.raises(RuntimeError):
+        research.delete_report("r-1")
 
 
-def test_http_failures_are_reported_not_fatal():
-    fake = FakeHttp(raise_on="Apple")
-    r = research.research_as_of("2015-03-15", ["AAPL"],
-                                {"names": {"AAPL": "Apple Inc."}},
-                                http_get=fake)
-    assert r["AAPL"] is None
-    assert "failed" in r["_skips"]["AAPL"]
-    assert "the web is on fire" in r["_skips"]["AAPL"]
-
-
-def test_names_map_ticks_to_real_page_titles():
-    fake = FakeHttp()
-    research.research_as_of("2015-03-15", ["ZZZ"],
-                            {"names": {"ZZZ": "Apple Inc."}}, http_get=fake)
-    assert wiki_calls(fake, titles="Apple Inc.")
-
-
-def test_empty_names_and_empty_pages_are_honest():
-    fake = FakeHttp()   # wiki exists for Apple Inc. only
-    r = research.research_as_of("2015-03-15", ["AAPL"], http_get=fake)
-    # no name mapping: the ticker "AAPL" is not a Wikipedia page
-    assert r["AAPL"] is None
-    assert "no Wikipedia page" in r["_skips"]["AAPL"]
+def test_store_keeps_only_the_latest_reports():
+    reports = [
+        {"id": "r-%02d" % i, "kind": "ai", "title": "T%d" % i,
+         "field": "F", "summary": "s", "goal": "g", "body": "b" * 200}
+        for i in range(research._REPORTS_KEEP + 5)]
+    research._save_reports(reports)
+    got = vault.read_section("research")["reports"]
+    assert len(got) == research._REPORTS_KEEP
+    assert got[-1]["id"] == "r-29"
 
 
 # ---------------------------------------------------------------------------
-# The seam: a Researcher plugged into the engine
+# The data digest: what the run's prompt says about the reader's file
 # ---------------------------------------------------------------------------
 
-def test_researcher_is_the_engine_seam():
-    from app import strategy_lab
+def test_data_digest_empty_file_says_so():
+    d = research.data_digest()
+    assert "no data" in d.lower()
 
-    fake = FakeHttp()
-    px = {"A": {str(date(2015, 3, 11) + timedelta(days=i)): 100.0
-                for i in range(20)}}
-    p = strategy_lab.make_plan(["A"], frequency="week", research=True,
-                               targets={"A": 1.0}, names={"A": "Apple Inc."})
-    r = strategy_lab.simulate(p, px, strategy_lab.decide_plan,
-                              researcher=research.Researcher(http_get=fake))
-    assert r["decisions"] >= 2
-    for e in r["log"]:
-        assert "made the iPhone by 2015" in e["research"]["A"]
-    # research never touches the math
-    assert r["equity"] == [100_000.0] * 20
-    assert r["trades"] == 1
+
+def test_data_digest_carries_holdings_and_moves():
+    vault.write_section("portfolio",
+                        {"v": 1, "updated": 0,
+                         "positions": [{"ticker": "AAPL",
+                                        "name": "Apple",
+                                        "shares": 10,
+                                        "cost_basis": 100.0,
+                                        "note": "core"}]})
+    vault.write_section("risk",
+                        {"v": 1, "updated": 0,
+                         "moves": {"AAPL": 12.5}})
+    d = research.data_digest()
+    assert "AAPL" in d and "Apple" in d
+    assert "12.5%" in d
+    st = research.data_status()
+    assert st["portfolio"] == 1 and st["moves"] == 1
+    assert st["pages"] == 0
+
+
+# ---------------------------------------------------------------------------
+# The run job
+# ---------------------------------------------------------------------------
+
+def test_start_run_rejects_goals_that_are_not_goals():
+    with pytest.raises(RuntimeError):
+        research.start_run("ab")
+    with pytest.raises(RuntimeError):
+        research.start_run("x" * (research.GOAL_MAX + 1))
+    assert research.get_run_job("r-deadbeef") is None
+
+
+def test_run_done_path_saves_the_report(monkeypatch):
+    monkeypatch.setattr(web, "gather", _fake_gather())
+    monkeypatch.setattr(
+        risk, "_post_llm",
+        lambda system, user, max_tokens=4000, timeout=60.0, config=None:
+            (_answer(), "fake-model"))
+    monkeypatch.setenv("PROOF_LLM_KEY", "k")
+
+    job = research.start_run("merton model of credit risk")
+    assert job["status"] == "running"
+    final = _poll_run(job["id"])
+    assert final["status"] == "done", final["message"]
+    assert final["report"]["title"] == "Credit risk, structurally"
+    assert [s["title"] for s in final["sources"]] == [
+        "Merton model", "A paper"]
+
+    saved = vault.read_section("research")["reports"]
+    me = next(n for n in saved if n["id"] == final["report"]["id"])
+    assert len(me["sources"]) == 2
+    # Empty file: the ties say so in plain English.
+    assert me["ties"] == [
+        "You have no data saved yet — this report stands on its own."]
+    assert any(e["id"] == me["id"] for e in research.listing())
+
+
+def test_run_prompt_carries_the_data_digest(monkeypatch):
+    vault.write_section("portfolio",
+                        {"v": 1, "updated": 0,
+                         "positions": [{"ticker": "AAPL",
+                                        "name": "Apple",
+                                        "shares": 10,
+                                        "cost_basis": 100.0,
+                                        "note": ""}]})
+    seen = {}
+
+    def fake(system, user, max_tokens=4000, timeout=60.0, config=None):
+        seen["user"] = user
+        return (_answer(ties=["Your Apple holding: …"]), "fake-model")
+    monkeypatch.setattr(web, "gather", _fake_gather())
+    monkeypatch.setattr(risk, "_post_llm", fake)
+    monkeypatch.setenv("PROOF_LLM_KEY", "k")
+
+    final = _poll_run(research.start_run("how do option contracts work")["id"])
+    assert final["status"] == "done"
+    assert "AAPL" in seen["user"]
+
+
+def test_run_gathered_without_key(monkeypatch):
+    monkeypatch.setattr(web, "gather", _fake_gather())
+    final = _poll_run(research.start_run("merton model of credit risk")["id"])
+    assert final["status"] == "gathered"
+    assert final["report"] is None
+    assert final["sources"][0]["title"] == "Merton model"
+    assert "Settings" in final["message"]
+
+
+def test_run_failed_when_gather_too_thin(monkeypatch):
+    monkeypatch.setattr(web, "gather",
+                        lambda q, r, http_get=None: ("tiny", []))
+    final = _poll_run(research.start_run("merton model of credit risk")["id"])
+    assert final["status"] == "failed"
+    assert "too thin" in final["message"]
+
+
+def test_run_failed_when_web_goes_down(monkeypatch):
+    def boom(query, report, http_get=None):
+        raise RuntimeError("dns down")
+    monkeypatch.setattr(web, "gather", boom)
+    final = _poll_run(research.start_run("merton model of credit risk")["id"])
+    assert final["status"] == "failed"
+    assert "try again" in final["message"]
+
+
+def test_run_failed_on_bad_model_answer(monkeypatch):
+    from app import risk as r
+    monkeypatch.setattr(web, "gather", _fake_gather())
+    monkeypatch.setattr(
+        r, "_post_llm",
+        lambda system, user, max_tokens=4000, timeout=60.0, config=None:
+            ("sorry, prose", "fake"))
+    monkeypatch.setenv("PROOF_LLM_KEY", "k")
+    final = _poll_run(research.start_run("merton model of credit risk")["id"])
+    assert final["status"] == "failed"
+    assert "model" in final["message"]
+    assert final["sources"]          # the pages it found are still reported
+
+
+def test_run_survives_raw_model_exception(monkeypatch):
+    import httpx
+    from app import risk as r
+
+    def raw_boom(system, user, max_tokens=4000, timeout=60.0):
+        raise httpx.ReadTimeout("timed out")
+    monkeypatch.setattr(web, "gather", _fake_gather())
+    monkeypatch.setattr(r, "_post_llm", raw_boom)
+    monkeypatch.setenv("PROOF_LLM_KEY", "k")
+    final = _poll_run(research.start_run("merton model of credit risk")["id"])
+    assert final["status"] == "failed"
+    assert final["report"] is None
+    assert final["sources"]
+
+
+def test_run_write_uses_the_long_window(monkeypatch):
+    seen = {}
+
+    def fake(system, user, max_tokens=4000, timeout=60.0, config=None):
+        seen["timeout"] = timeout
+        seen["max_tokens"] = max_tokens
+        return (_answer(), "fake-model")
+    monkeypatch.setattr(web, "gather", _fake_gather())
+    monkeypatch.setattr(risk, "_post_llm", fake)
+    monkeypatch.setenv("PROOF_LLM_KEY", "k")
+    final = _poll_run(research.start_run("merton model of credit risk")["id"])
+    assert final["status"] == "done"
+    assert seen["timeout"] == research.AI_LLM_TIMEOUT_RUN
+    assert seen["max_tokens"] == research.AI_LLM_MAX_TOKENS_RUN
+
+
+def test_run_progress_is_bounded(monkeypatch):
+    def gather(query, report, http_get=None):
+        for i in range(20):
+            report(f"step {i}")
+        return "tiny", []
+    monkeypatch.setattr(web, "gather", gather)
+    final = _poll_run(research.start_run("merton model of credit risk")["id"])
+    assert len(final["progress"]) <= 8
+    assert final["progress"][-1] == "step 19"
+
+
+def test_prune_jobs_ages_out_and_caps(monkeypatch):
+    now = time.time()
+
+    def job(jid, **kw):
+        return {"id": jid, "status": "done", "message": "",
+                "progress": [], "sources": [], "report": None,
+                "created": now, "done": now, **kw}
+    research._JOBS.clear()
+    research._JOBS["r-old"] = job("r-old", done=now - 700)
+    research._JOBS["r-fresh"] = job("r-fresh", done=now - 10)
+    research._JOBS["r-run"] = job("r-run", status="running", done=None)
+    research._prune_jobs()
+    assert "r-old" not in research._JOBS
+    assert "r-fresh" in research._JOBS
+    assert "r-run" in research._JOBS      # running jobs never age out
+
+    monkeypatch.setattr(research, "_MAX_JOBS", 2)
+    research._JOBS["r-extra"] = job("r-extra", done=now - 50)
+    research._JOBS["r-extra2"] = job("r-extra2", done=now - 40)
+    research._prune_jobs()
+    assert len(research._JOBS) <= 2
+    assert "r-run" in research._JOBS      # eviction never touches the running
+    research._JOBS.clear()
+
+
+# ---------------------------------------------------------------------------
+# The routes
+# ---------------------------------------------------------------------------
+
+def test_list_route_is_blank_by_default(c):
+    r = c.get("/api/research")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["reports"] == []
+    assert body["meta"]["count"] == 0
+    assert body["meta"]["llm"] is False
+    assert body["meta"]["data"] == {"portfolio": 0, "pages": 0,
+                                    "moves": 0}
+
+
+def test_detail_and_delete_routes_unknown_are_404(c):
+    assert c.get("/api/research/ghost").status_code == 404
+    assert c.delete("/api/research/ghost").status_code == 404
+
+
+def test_run_route_rejects_a_short_goal(c):
+    r = c.post("/api/research/run", json={"goal": "ab"})
+    assert r.status_code == 400
+    assert "goal" in r.json()["detail"]
+
+
+def test_run_routes_start_and_status(c, monkeypatch):
+    monkeypatch.setattr(web, "gather", _fake_gather())
+    r = c.post("/api/research/run",
+               json={"goal": "merton model of credit risk"})
+    assert r.status_code == 200
+    job_id = r.json()["id"]
+    assert job_id.startswith("r")
+
+    end = time.time() + 15
+    job = None
+    while time.time() < end:
+        job = c.get(f"/api/research/run/{job_id}").json()
+        if job["status"] != "running":
+            break
+        time.sleep(0.05)
+    # No key (autouse fixture) → the terminal state is 'gathered'.
+    assert job["status"] == "gathered"
+    assert job["sources"][0]["title"] == "Merton model"
+    assert c.get("/api/research/run/nope").status_code == 404
+
+
+def test_run_route_reports_validation_errors_plainly(c):
+    r = c.post("/api/research/run", json={"goal": "x" * 5000})
+    assert r.status_code == 422        # pydantic's max_length gate

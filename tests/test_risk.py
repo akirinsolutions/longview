@@ -9,24 +9,27 @@ import math
 
 import pytest
 
-from app import market_data, portfolio, risk
+from app import market_data, portfolio, risk, vault
 
 
 @pytest.fixture(autouse=True)
 def risk_path(tmp_path, monkeypatch):
     # autouse: a test that forgets to request it must still not read or
-    # write the real data/risk.json. (One once wrote a test move into the
-    # real file, and the next suite run tripped over it on re-read.)
-    p = tmp_path / "risk.json"
-    monkeypatch.setattr(risk, "RISK_PATH", p)
+    # write the real data file. (One once wrote a test move into the
+    # reader's real file, and the next suite run tripped over it on
+    # re-read.) Moves and positions both live in the one vault file.
+    p = tmp_path / "longview.json"
+    monkeypatch.setattr(vault, "VAULT_PATH", p)
     return p
 
 
 @pytest.fixture(autouse=True)
 def portfolio_path(tmp_path, monkeypatch):
-    # autouse: same reason — no test here may touch the real portfolio file.
-    p = tmp_path / "portfolio.json"
-    monkeypatch.setattr(portfolio, "PORTFOLIO_PATH", p)
+    # autouse: same reason — no test here may touch the real data file.
+    # Both sections live in the one vault file, so both names resolve to
+    # the same scratch path.
+    p = tmp_path / "longview.json"
+    monkeypatch.setattr(vault, "VAULT_PATH", p)
     return p
 
 
@@ -103,7 +106,7 @@ def test_save_drops_junk(risk_path):
 
 def test_save_writes_envelope_atomically(risk_path, tmp_path):
     risk.save_moves({"A": 3})
-    saved = json.loads(risk_path.read_text())
+    saved = json.loads(risk_path.read_text())["sections"]["risk"]
     assert saved["v"] == 1
     assert saved["moves"] == {"A": 3.0}
     assert saved["updated"] > 0
@@ -334,10 +337,6 @@ def test_routes_end_to_end(portfolio_path, risk_path, monkeypatch):
     import app.main as m
 
     portfolio.add_position(_pos(shares=10, cost=120.0))
-    monkeypatch.setattr(
-        m.portfolio, "PORTFOLIO_PATH", portfolio_path)
-    monkeypatch.setattr(
-        m.risk, "RISK_PATH", risk_path)
     monkeypatch.setattr(
         m.market_data, "quote",
         lambda sym, ttl, name_hint=None: _quote(sym, price=150.0))

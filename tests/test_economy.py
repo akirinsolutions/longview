@@ -10,7 +10,7 @@ import json
 
 import pytest
 
-from app import economy
+from app import economy, vault
 
 
 def _walk(node):
@@ -24,8 +24,9 @@ ROOT = economy.view([])
 
 @pytest.fixture
 def sandbox(tmp_path, monkeypatch):
-    """Keep every write inside the test: point the tree at a temp file."""
-    monkeypatch.setattr(economy, "DATA_PATH", tmp_path / "economy_tree.json")
+    """Keep every write inside the test: the tree's section of the vault
+    file lives in the test's temp dir."""
+    monkeypatch.setattr(vault, "VAULT_PATH", tmp_path / "longview.json")
     saved = economy._copy(economy._TREE)
     yield tmp_path
     economy._TREE = saved
@@ -251,7 +252,8 @@ def test_update_replaces_one_level_and_keeps_geography(sandbox):
         assert [g["name"] for g in c["children"]] == [
             "United States & Canada", "Europe", "China",
             "Asia-Pacific & rest"]
-    saved = json.loads((sandbox / "economy_tree.json").read_text())
+    saved = json.loads((sandbox / "longview.json").read_text())[
+        "sections"]["economy"]
     assert saved["tree"]["name"] == "Global household wealth"
 
 
@@ -283,7 +285,9 @@ def test_reset_restores_the_authored_tree(sandbox):
     assert [c["name"] for c in economy.view(path)["children"]] != original
     economy.reset()
     assert [c["name"] for c in economy.view(path)["children"]] == original
-    assert not (sandbox / "economy_tree.json").exists()
+    # The reset drops the section: the authored tree is back, and the
+    # vault holds no edited tree.
+    assert vault.read_section("economy") is None
 
 
 def test_update_only_works_on_the_sixth_level_list(sandbox):

@@ -1212,6 +1212,59 @@ in plain English, using *only* the numbers Proof read from the 13Fs.
     existing), RAM rule (tests never touch the :8000 model),
     plain-English errors, no-lookahead math, data/ preserved.
 
+## Decision 25 — one file for the data, a research section, a public host
+
+2026-11-21. The hosted version: anyone opens the URL in a browser and
+uses it — no download, no login. The data layer is rebuilt so that
+works, and the old study section becomes the research section.
+
+- 1. **One file for all the reader's data.** Every piece of state the
+  app writes — portfolio, notes pages, risk moves, fund roster,
+  research reports, economy-tree overrides — collapses into one
+  `data/longview.json`: `{"v":1, "updated":…, "sections":
+  {name: <the module's old envelope>}}`. Each module keeps its own
+  envelope shape and just points its load/save at the vault's section,
+  so the bytes are compatible with the old files. New `app/vault.py`
+  owns the file: a one-time migration folds the legacy
+  `data/*.json` files in (the old files stay on disk, untracked,
+  deletable once the reader checks the vault). `GET/PUT /api/vault`
+  serves export/import. The client mirrors the vault in
+  localStorage, syncs on load (the newer `updated` wins), and
+  Settings gains a Your-data card: export (download the file),
+  import (upload it), what the file holds. No login, no per-visitor
+  state on the server; the file, not the server, is the storage.
+  That is what makes a free ephemeral host viable — the disk may
+  wipe on a redeploy, the file is importable.
+- 2. **Study → Research.** The ten authored `study_data/*.md`
+  reference notes leave the section (the files stay in the repo, no
+  longer served); the section starts blank. The input is now a
+  *goal*: the engine reuses the wiki/wikibooks/wikiversity/arXiv
+  gather, then the model writes one saved report plus a "how this
+  ties into your data" part — the prompt carries a digest of what the
+  file holds (holdings, pages, risk moves); an empty file says so and
+  the report stands alone. The backtest lab's date-gated researcher
+  moves to `app/lab_research.py` (it took the name first); the shared
+  web client moves to `app/web.py`. Routes: `/api/research…` replaces
+  `/api/study…`; nav and footer say Research.
+- 3. **The model address is vetted.** `llm.resolve()` now validates
+  the base URL: https to any public host; plain http only to
+  127.0.0.1 / localhost / ::1; private, link-local (the cloud
+  metadata address) and otherwise non-public targets are refused in
+  plain English, for both the env key and a per-request key. A public
+  instance must not be a proxy into someone's intranet.
+- 4. **The docs, de-slopped.** A voice pass over the in-app docs tab
+  and the README: short, concrete, no corporate adjectives.
+- 5. **Host.** A public instance from the open repo, with no model
+  env set — visitors bring their own key per request. Which host is
+  the reader's one-time call (Render free / paid / PythonAnywhere / a
+  tunnel from their Mac); the client-side file makes the free
+  ephemeral ones honest options again. Their local 8010 self-host
+  keeps the :8000 model env.
+
+Standing rules unchanged: no login, no new deps, RAM rule (never
+kill the :8000 model; tests never reach it), plain-English errors,
+72-col wrap, data/ preserved.
+
 ## How to run
 
 See `README.md`. Short version:
@@ -1219,5 +1272,5 @@ See `README.md`. Short version:
 ```
 cd beacon
 .venv/bin/uvicorn app.main:app --port 8010   # open http://localhost:8010
-.venv/bin/python -m pytest tests/ -q          # 410 tests, offline
+.venv/bin/python -m pytest tests/ -q          # 432 tests, offline
 ```

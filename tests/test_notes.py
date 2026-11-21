@@ -7,13 +7,15 @@ import json
 
 import pytest
 
-from app import notes
+from app import notes, vault
 
 
 @pytest.fixture
 def notes_path(tmp_path, monkeypatch):
-    p = tmp_path / "notes.json"
-    monkeypatch.setattr(notes, "NOTES_PATH", p)
+    # The notebook's pages live in the vault's "notes" section; the file
+    # this fixture points at is the vault file itself.
+    p = tmp_path / "longview.json"
+    monkeypatch.setattr(vault, "VAULT_PATH", p)
     return p
 
 
@@ -28,7 +30,7 @@ def test_missing_file_is_an_empty_notebook(notes_path):
 
 def test_create_saves_and_reloads(notes_path):
     p = notes.create_page("My page", "some thoughts")
-    saved = json.loads(notes_path.read_text())
+    saved = json.loads(notes_path.read_text())["sections"]["notes"]
     assert saved["v"] == notes._NOTES_VERSION
     assert len(saved["pages"]) == 1
     assert notes.get_page(p["id"])["body"] == "some thoughts"
@@ -46,14 +48,18 @@ def test_corrupt_file_is_an_empty_notebook(notes_path):
 
 def test_wrong_version_file_is_an_empty_notebook(notes_path):
     notes_path.write_text(json.dumps(
-        {"v": 99, "updated": 0, "pages": [{"id": "n1", "title": "x"}]}))
+        {"v": 1, "updated": 0,
+         "sections": {"notes": {"v": 99, "updated": 0,
+                                "pages": [{"id": "n1", "title": "x"}]}}}))
     assert notes.load_pages() == []
 
 
 def test_missing_snippets_key_heals(notes_path):
     notes_path.write_text(json.dumps(
         {"v": 1, "updated": 0,
-         "pages": [{"id": "n1", "title": "x", "body": "b"}]}))
+         "sections": {"notes": {"v": 1, "updated": 0,
+                                "pages": [{"id": "n1", "title": "x",
+                                           "body": "b"}]}}}))
     assert notes.get_page("n1")["snippets"] == []
 
 
