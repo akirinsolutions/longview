@@ -1259,7 +1259,11 @@ works, and the old study section becomes the research section.
   the reader's one-time call (Render free / paid / PythonAnywhere / a
   tunnel from their Mac); the client-side file makes the free
   ephemeral ones honest options again. Their local 8010 self-host
-  keeps the :8000 model env.
+  keeps the :8000 model env. The reader chose PythonAnywhere free:
+  the public instance lives there (setup steps in the README's
+  hosted section), an ASGI site via `pa website create --asgi` with
+  an always-on schedule, no model env — visitors bring a key per
+  request, and the one shared file is the documented scratchpad.
 
 Standing rules unchanged: no login, no new deps, RAM rule (never
 kill the :8000 model; tests never reach it), plain-English errors,
