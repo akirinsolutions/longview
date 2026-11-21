@@ -146,26 +146,40 @@ it holds. The file is the storage; the server just serves it.
 ## The hosted version
 
 The public instance runs this repository on a plain Python host,
-with nothing else on it. On Render: create a **Web Service** on the
-Python runtime, and for the start command:
+with nothing else on it. No Dockerfile, no database, no environment
+to set: `requirements.txt` is the whole dependency story, and the
+only way to run the app is
 
 ```
 uvicorn app.main:app --port $PORT
 ```
 
-No Dockerfile, no database, no environment to set: `requirements.txt`
-is the whole dependency story. The instance ships without a model
-key, so its AI features run on the key each visitor brings in
-Settings (sent per request, relayed to the visitor's own endpoint,
-never stored).
+The public instance lives on PythonAnywhere (free tier). To stand
+one up there:
+
+1. Sign up, then open a console tab and clone this repository into
+   your home directory: `git clone
+   https://github.com/akirinsolutions/longview.git && cd longview
+   && pip3 install --user -r requirements.txt`
+2. Create the ASGI site: `pa website create --asgi longview
+   longview` — it asks for a WSGI/ASGI path of the form
+   `module:app`; answer `app.main:app`.
+3. In the web tab, add an **Always on** schedule for the site. The
+   free tier sleeps a web app after ten minutes idle; the schedule
+   keeps it awake, at the cost of the day's always-on credit.
+
+The instance ships without a model key, so its AI features run on
+the key each visitor brings in Settings (sent per request, relayed
+to the visitor's own endpoint, never stored).
 
 One honest limitation, stated plainly: the data file lives on the
-host's disk, and on an ephemeral free tier that disk may be wiped on
-a redeploy. The file is shared, not per-person, so treat the public
-instance's file as a scratchpad — use the app freely, and download
-the file when you want your work to outlive the instance. To keep a
-permanent home for your data, run your own Longview (the four lines
-in Quick start) and import the file there.
+host's disk, and it is shared — there is one file for the whole
+instance, so what any visitor saves is what the next one sees. Use
+the public instance freely, but if your work matters, download the
+file from Settings when you finish (Import puts it back any time,
+on the same instance or on your own). To keep a permanent home for
+your data, run your own Longview (the four lines in Quick start)
+and import the file there.
 
 ## Where the data comes from
 
