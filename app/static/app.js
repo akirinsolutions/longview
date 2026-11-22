@@ -3103,6 +3103,21 @@ function rangeBar(lo, hi, val, label, px) {
 function renderCompany(c, sym, tab) {
   const box = $("#co-body");
   const dash = "—";
+  // no data at all — no quote, no chart, no name: the symbol doesn't exist
+  const nothing =
+    !c.name && c.price == null && !c.change && !c.market_cap && !c.pe &&
+    !(c.history || []).length && !c.sector && !c.about;
+  if (nothing) {
+    box.innerHTML = `
+      <div class="pane-head"><h1>${esc(sym)}</h1></div>
+      <div class="card co-empty">
+        <p class="co-empty-title">No company matches &ldquo;${esc(sym)}&rdquo;.</p>
+        <p class="co-empty-sub">Check the spelling or ticker — e.g. &#39;AAPL&#39; — or search for the company by name above.</p>
+        <a class="btn primary" href="#company">Back to search</a>
+      </div>`;
+    reveal(box);
+    return;
+  }
   const cur = c.currency;
   const px = (x) => x == null ? dash : (cur && cur !== "USD" ? cur + " " : "$") + x.toFixed(2);
   const name = c.name || sym;
@@ -3383,6 +3398,18 @@ $("#l-enter").addEventListener("click", enterApp);
 /* Landing links that point into the app: the anchor already changed the
    hash (which switched the pane beneath the overlay); just enter. */
 $$("[data-l]").forEach((a) => a.addEventListener("click", enterApp));
+/* Jumping straight at the portfolio CTA focuses the ticker field on arrival. */
+$$(".l-start-btn").forEach((a) => a.addEventListener("click", () => {
+  const hash = a.getAttribute("href") || "";
+  if (hash !== "#home/portfolio") return;
+  setTimeout(() => {
+    const q = document.getElementById("pf-q");
+    if (q && document.getElementById("sub-portfolio").classList.contains("active")) {
+      q.focus();
+      q.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+  }, 1200);
+}));
 window.addEventListener("keydown", (e) => {
   if (e.key !== "Enter" || !document.body.classList.contains("at-landing")) return;
   const tag = (document.activeElement || {}).tagName || "";

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Longview</title>
-<link rel="stylesheet" href="/static/style.css?v=44">
+<link rel="stylesheet" href="/static/style.css?v=45">
 </head>
 <body class="at-landing">
 <div id="landing">
@@ -87,7 +87,7 @@ open  http://127.0.0.1:8010</pre>
 </div>
 <div id="app">
 <aside class="sidebar">
-  <div class="brand">Longview</div>
+  <div class="brand">Longview<span class="brand-sub">Smart-money research desk</span></div>
   <nav class="nav-group">
     <a class="nav" data-route="home" href="#home/portfolio">Home</a>
   </nav>
@@ -143,7 +143,7 @@ open  http://127.0.0.1:8010</pre>
         </div>
         <div id="pf-stock-fields">
           <label for="pf-q">Add a holding</label>
-          <input id="pf-q" type="search" autocomplete="off" placeholder="Search or type a ticker">
+          <input id="pf-q" type="search" autocomplete="off" placeholder="e.g. AAPL or Apple Inc.">
           <div id="pf-suggests" class="pf-results" hidden></div>
         </div>
         <div id="pf-custom-fields" hidden>
@@ -737,10 +737,10 @@ python -m venv .venv
       <input id="chat-q" placeholder="Ask about your holdings" autocomplete="off" maxlength="800">
       <button class="btn primary" type="submit">Send</button>
     </form>
-    <p class="chat-note">Local model · not advice</p>
+    <p class="chat-note">On your model · not advice</p>
   </div>
 </div>
 <script src="/static/dcf.js?v=37"></script>
-<script src="/static/app.js?v=44"></script>
+<script src="/static/app.js?v=45"></script>
 </body>
 </html>
