@@ -1405,3 +1405,94 @@ tr.editing > td { background: var(--panel-2); }
 .dl-note { flex: 1 1 260px; }
 .dl-trades { color: var(--ink); font-weight: 650; }
 .dl-res { color: var(--faint); }
+
+/* ---------------- welcome card · first visit ---------------- */
+.welcome {
+  margin: 0 0 22px; padding: 22px 24px 18px;
+  background: linear-gradient(180deg, #fcfaf5, var(--panel));
+  border: 1px solid var(--line); border-left: 4px solid var(--amber);
+  border-radius: var(--r-lg);
+}
+.welcome-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+  margin-bottom: 16px;
+}
+.welcome-head h3 {
+  font-family: var(--serif); font-size: 21px; font-weight: 600;
+  letter-spacing: -0.01em; margin: 6px 0 0; color: var(--ink);
+}
+.welcome-eyebrow {
+  display: inline-flex; align-items: center; gap: 10px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .2em;
+  text-transform: uppercase; color: var(--amber); margin: 0;
+}
+.welcome-dismiss {
+  flex: 0 0 auto;
+  width: 30px; height: 30px; border: none; border-radius: 50%;
+  background: transparent; color: var(--faint);
+  font-size: 20px; line-height: 1; cursor: pointer;
+  transition: background .13s var(--ease), color .13s var(--ease);
+}
+.welcome-dismiss:hover { background: var(--line-soft); color: var(--ink); }
+.welcome-steps { display: flex; flex-direction: column; gap: 12px; }
+.welcome-step {
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 14px; border: 1px solid var(--line-soft);
+  border-radius: var(--r); background: var(--panel);
+}
+.welcome-num {
+  flex: 0 0 auto;
+  width: 30px; height: 30px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 12px; font-weight: 700;
+  color: var(--amber); border: 1.5px solid var(--amber);
+}
+.welcome-text { flex: 1 1 auto; min-width: 0; }
+.welcome-text strong { display: block; font-size: 13.5px; color: var(--ink); }
+.welcome-text p { margin: 2px 0 0; font-size: 12.5px; color: var(--sub); line-height: 1.5; }
+.welcome .btn { white-space: nowrap; flex: 0 0 auto; }
+.welcome .fineprint { color: var(--faint); font-size: 11.5px; margin: 14px 0 0; }
+
+/* ---------------- richer empty states -------------------- */
+.rm-empty { text-align: center; padding: 34px 18px; }
+.rm-empty-title { font-family: var(--serif); font-size: 20px; font-weight: 600; margin: 0; color: var(--ink); }
+.rm-empty-sub { margin: 10px auto 18px; color: var(--sub); font-size: 13.5px; max-width: 48ch; line-height: 1.55; }
+
+/* ---------------- landing · start-here strip -------------------- */
+.l-start { padding: 66px 0; border-top: 1px solid #1e242c; }
+.l-start h2 {
+  font-family: var(--serif); font-size: 30px; font-weight: 600;
+  letter-spacing: -0.01em; color: #f0f1ee; margin: 8px 0 30px;
+}
+.l-start-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.l-start-card {
+  position: relative; background: #151a21; border: 1px solid #232a33;
+  border-radius: 4px; padding: 26px 22px 22px; display: flex; flex-direction: column;
+}
+.l-num {
+  font-family: var(--mono); font-size: 11px; color: #c8a24a;
+  letter-spacing: .12em; margin-bottom: 12px;
+}
+.l-start-card h3 {
+  margin: 0 0 9px; font-family: var(--serif); font-size: 18px; font-weight: 600;
+  color: #e8e9e6; letter-spacing: -0.01em;
+}
+.l-start-card p { margin: 0 0 16px; font-size: 13px; line-height: 1.6; color: #8b939c; }
+.l-start-btn {
+  align-self: flex-start; margin-top: auto;
+  display: inline-block; padding: 9px 16px;
+  border: 1px solid #333a43; border-radius: 2px;
+  color: #e8e9e6; font-size: 11px; font-weight: 700;
+  letter-spacing: .12em; text-transform: uppercase;
+  transition: background .15s var(--ease), border-color .15s var(--ease);
+}
+.l-start-btn:hover { background: rgba(240, 241, 238, .07); border-color: #c8a24a; color: #fff; text-decoration: none; }
+
+/* ---------------- small buttons -------------------- */
+.btn.small { padding: 8px 14px; font-size: 11px; letter-spacing: .08em; }
+.btn.small:disabled { opacity: .45; cursor: default; }
+
+@media (max-width: 820px) {
+  .l-start { padding: 48px 0; }
+  .l-start-grid { grid-template-columns: 1fr; }
+}

@@ -2363,11 +2363,41 @@ async function loadPortfolio(refresh = false) {
   }
 }
 
+/* ---------- first visit: a welcome card on the portfolio tab ----------
+   Shown only when the vault holds no positions and the reader has not
+   dismissed it. Held in localStorage, not the vault — it is a UX
+   preference, not data. */
+const WELCOME_KEY = "longview-welcome-dismissed";
+
+function welcomeDismissed() {
+  try { return localStorage.getItem(WELCOME_KEY) === "1"; } catch { return false; }
+}
+
+function updateWelcome(hasPositions) {
+  const card = $("#welcome");
+  if (!card) return;
+  card.hidden = hasPositions || welcomeDismissed();
+}
+
+function initWelcome() {
+  const dismiss = $("#welcome-dismiss");
+  if (dismiss) dismiss.addEventListener("click", () => {
+    try { localStorage.setItem(WELCOME_KEY, "1"); } catch { /* private mode */ }
+    const card = $("#welcome"); if (card) card.hidden = true;
+  });
+  const go = $("#welcome-add");
+  if (go) go.addEventListener("click", () => {
+    const q = $("#pf-q");
+    if (q) { q.focus(); q.scrollIntoView({ block: "center", behavior: "smooth" }); }
+  });
+}
+
 function renderPortfolio(d) {
   const has = d.positions.length > 0;
   $("#pf-empty").hidden = has;
   $("#pf-table-card").hidden = !has;
   $("#pf-total").hidden = !has;
+  updateWelcome(has);
   if (!has) { $("#pf-total").innerHTML = ""; return; }
   paintPfTotal(d.totals);
   paintPfPeriods();
@@ -2381,6 +2411,7 @@ function renderPortfolio(d) {
 /* the top strip: what it's all worth, plus the gain for the chosen window */
 function paintPfTotal(T) {
   const tcur = T.currency || (T.currencies.length === 1 ? T.currencies[0] : "");
+  const mixed = !PMF.cur && T.value == null && T.currencies.length > 1;
   const why = T.value == null
     ? (T.priced ? "Currencies don't add up" : "Nothing could be priced")
     : (T.missing ? `${T.missing} holding${T.missing === 1 ? "" : "s"} without a price` : "");
@@ -2393,7 +2424,9 @@ function paintPfTotal(T) {
   $("#pf-total").innerHTML =
     `<span title="${esc(why)}">Total <strong>${fmtBigCur(T.value, tcur)}</strong></span>`
     + pl
-    + (why ? ` <span class="dim">${T.priced}/${T.n} priced</span>` : "");
+    + (mixed
+        ? ` <span class="dim">your holdings span ${esc(T.currencies.join(" · "))} — pick a currency above to convert</span>`
+        : (why ? ` <span class="dim">${T.priced}/${T.n} priced</span>` : ""));
 }
 
 /* the window picker: Cost / 1W / 1M / 3M / 6M / 1Y. Client-side only —
@@ -3507,6 +3540,7 @@ function rmTotals() {
 function paintRmStrip() {
   const T = rmTotals();
   const cur = T.currency || "";
+  const mixed = !RM.cur && T.scenario == null && T.currencies.length > 1;
   const why = T.scenario == null
     ? (T.priced ? "Currencies don't add up — pick one above"
                 : "Nothing could be priced")
@@ -3518,7 +3552,8 @@ function paintRmStrip() {
     `<span title="${esc(why)}">After the moves, <strong>${fmtBigCur(T.value, cur)}</strong> becomes <strong>${fmtBigCur(T.scenario, cur)}</strong></span>`
     + del
     + (T.vol != null ? ` <span class="dim">· typical swing ${fmtSign(T.vol)}</span>` : "")
-    + (why ? ` <span class="dim">${T.priced}/${T.n} priced</span>` : "");
+    + (mixed ? ` <span class="dim">your holdings span ${esc(T.currencies.join(" · "))} — pick a currency above to convert</span>`
+              : (why ? ` <span class="dim">${T.priced}/${T.n} priced</span>` : ""));
 }
 
 function rmTip(p) {
@@ -4585,6 +4620,8 @@ $("#dir-q").addEventListener("input", () => {
 $("#dir-q").addEventListener("keydown", (e) => {
   if (e.key === "Enter") { clearTimeout(_dirT); dirSearch(); }
 });
+initWelcome();
+updateWelcome((PMF.data ? PMF.data.positions.length : 0) > 0);
 wsRestoreAll();
 applyHash();
 VAULT.sync();   // the newer of the server file and this mirror wins
