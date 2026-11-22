@@ -53,13 +53,13 @@ FUNDS: list[dict] = [
     # The 13F is filed by the "Inc." entity; the look-alike "L.P." CIK
     # (1009268) only files 13F-NT late notices. (The SEC loves these twins.)
     {"key": "deshaw",      "name": "D. E. Shaw",         "manager": "David Shaw",           "cik": 1009207},
-    {"key": "tiger",       "name": "Tiger Global",       "manager": "Nathan Koh",           "cik": 1167483},
+    {"key": "tiger",       "name": "Tiger Global",       "manager": "Chase Coleman",        "cik": 1167483},
     {"key": "citadel",     "name": "Citadel",            "manager": "Ken Griffin",          "cik": 1423053},
     {"key": "renaissance", "name": "Renaissance Tech",   "manager": "Jim Simons",           "cik": 1037389},
     # Pershing Square Inc. is the active 13F filer; the older "GP, LLC"
     # entity (1336476) last filed a holdings table in 2013.
     {"key": "pershing",    "name": "Pershing Square",    "manager": "Bill Ackman",          "cik": 2026053},
-    {"key": "thirdpoint",  "name": "Third Point",        "manager": "David Tepper",         "cik": 1040273},
+    {"key": "thirdpoint",  "name": "Third Point",        "manager": "Daniel Loeb",          "cik": 1040273},
     # Greenlight (Einhorn) stopped filing after Feb 2024, so the card went
     # stale. Replaced with Carl Icahn — the original activist. He files his
     # *personal* 13F ("ICAHN CARL C", CIK 921669) every quarter; verified
@@ -67,8 +67,8 @@ FUNDS: list[dict] = [
     {"key": "icahn",       "name": "Icahn",              "manager": "Carl Icahn · personal", "cik": 921669},
     # Coatue Management LLC files the 13F; "Coatue Capital LLC" (1269617)
     # has no holdings filings in the SEC's recent window.
-    {"key": "coatue",      "name": "Coatue",             "manager": "David Tepper (founder)", "cik": 1135730},
-    {"key": "millennium",  "name": "Millennium",         "manager": "Israel & Ayres",       "cik": 1273087},
+    {"key": "coatue",      "name": "Coatue",             "manager": "Philippe Laffont",     "cik": 1135730},
+    {"key": "millennium",  "name": "Millennium",         "manager": "Izzy Englander",       "cik": 1273087},
 ]
 
 _client: httpx.Client | None = None
@@ -138,11 +138,32 @@ def _save_roster(entries: list[dict]) -> None:
 
 
 def active_roster() -> list[dict]:
-    """The funds we actually scan. First run seeds the file from FUNDS."""
+    """The funds we actually scan. First run seeds the file from FUNDS.
+
+    The saved file is the *membership* list: which funds, and any the
+    user added. Display metadata for the eleven curated funds (name,
+    manager) stays in code, so a corrected name reaches an existing
+    roster without the user re-adding anything.
+    """
     entries = _load_roster_file()
     if entries is None:
         entries = [dict(f) for f in FUNDS]
         _save_roster(entries)
+        return entries
+    curated = {f["key"]: f for f in FUNDS}
+    changed = False
+    for f in entries:
+        base = curated.get(f.get("key"))
+        if base is None:
+            continue
+        if f.get("name") != base["name"] or f.get("manager") != base["manager"]:
+            f["name"], f["manager"] = base["name"], base["manager"]
+            changed = True
+    if changed:
+        try:
+            _save_roster(entries)
+        except OSError:
+            pass  # read-only vault: show the right name anyway
     return entries
 
 
@@ -831,7 +852,7 @@ def ask_data(quarters: int = 1, roster: list[dict] | None = None) -> dict:
 # ---------------------------------------------------------------------------
 
 _SCAN_VERSION = 2   # v2: cover-page periods; amendment-aware diff pairing
-_VIEW_VERSION = 3   # v3: rebuilt on the v2 pool (true quarter-ends, honest diffs)
+_VIEW_VERSION = 4   # v4: corrected manager labels (code-owned metadata)
 
 
 def asset_class(p: dict) -> str:

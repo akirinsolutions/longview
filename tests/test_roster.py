@@ -49,6 +49,18 @@ def test_corrupt_roster_falls_back_to_defaults(roster_path):
     assert keys == {f["key"] for f in funds.FUNDS}
 
 
+def test_saved_roster_picks_up_corrected_manager_labels(roster_path):
+    # Curated metadata lives in code; an older saved roster must not
+    # keep showing a stale (wrong) manager name forever.
+    entries = [dict(f) for f in funds.FUNDS]
+    entries[0]["manager"] = "Someone Else"
+    funds._save_roster(entries)
+    roster = funds.active_roster()
+    assert roster[0]["manager"] == funds.FUNDS[0]["manager"]
+    saved = json.loads(roster_path.read_text())["sections"]["roster"]
+    assert saved["funds"][0]["manager"] == funds.FUNDS[0]["manager"]
+
+
 def _fresh_cik_sub(form="13F-HR", date="2026-08-14"):
     return {"filings": {"recent": {"form": [form], "filingDate": [date]}}}
 
