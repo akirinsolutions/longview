@@ -4,52 +4,61 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Longview</title>
-<link rel="stylesheet" href="/static/style.css?v=42">
+<link rel="stylesheet" href="/static/style.css?v=44">
 </head>
 <body class="at-landing">
 <div id="landing">
   <div class="l-page">
     <header class="l-top">
-      <div class="l-brand"><span class="l-mark" aria-hidden="true"></span>Longview</div>
-      <a class="l-btn tiny" href="#docs" data-l="docs">Docs</a>
+      <div class="l-brand">Longview</div>
+      <a class="l-top-link" href="#docs" data-l="docs">Docs</a>
     </header>
 
     <section class="l-hero">
-      <p class="eyebrow">The filings, decoded</p>
+      <p class="l-kicker">The filings, decoded</p>
       <h1 class="l-title">Longview</h1>
       <p class="l-sub">Where the world's largest investors actually bought, sold, and held — read straight from the 13F filings. Where your own portfolio actually stands. And where your own strategy would have stood, traded day by day on real history.</p>
       <div class="l-ctas">
         <button id="l-enter" class="l-btn" type="button">Open the app</button>
         <a class="l-btn ghost" href="#docs" data-l="docs">Self-host it</a>
       </div>
-      <p class="l-hint">or press Enter — no account, no install, no tracking</p>
+      <p class="l-hint">No account, no install, no tracking.</p>
     </section>
 
-    <section class="l-grid3">
+    <section class="l-grid3" aria-label="What it does">
       <div class="l-card">
         <h3>Smart money</h3>
-        <p>Eleven funds, every 13F filing, one view. Where they agree, where they diverge, what changed this quarter — the numbers first, the model's reading second, and you can tell the model exactly what to ask.</p>
+        <p>Eleven funds, every 13F filing, one view. Where they agree, where they diverge, what changed this quarter — the numbers first, and you can ask the model anything about them.</p>
       </div>
       <div class="l-card">
         <h3>Risk desk</h3>
-        <p>Your portfolio marked to live prices: weights, a year's return, the size of the swings, and one keystroke of AI to rebalance the way you'd want to — a plan you approve, line by line.</p>
+        <p>Your portfolio marked to live prices: weights, a year's return, the size of the swings — and an AI plan you approve line by line.</p>
       </div>
       <div class="l-card">
         <h3>Backtest lab</h3>
-        <p>Write a strategy in a form, or in your own words. Longview trades it day by day across five to twenty years of real market data — no lookahead, no survivorship, and a verdict you can audit decision by decision.</p>
+        <p>A strategy written in a form or in your own words, traded day by day on real history — no lookahead, no survivorship, a verdict you can audit.</p>
       </div>
     </section>
 
-    <section class="l-byo">
-      <div>
-        <p class="eyebrow l-eyebrow">Bring your own key</p>
-        <h2>Every AI feature runs on your model</h2>
-        <p class="l-sub2">Any OpenAI-compatible endpoint works — OpenAI itself, a hosted one, or your own server. The key is the only thing you supply.</p>
-      </div>
-      <ol class="l-steps">
-        <li><b>Open Settings.</b><span>Paste the base URL, key, and model name of whatever endpoint you use.</span></li>
-        <li><b>Test it.</b><span>One small call proves the connection and tells you which model is really answering.</span></li>
-        <li><b>Use everything.</b><span>The ask, the fills, the AI backtest, the notes — all of it, on your key.</span></li>
+    <section class="l-start" aria-labelledby="l-start-h">
+      <p class="l-kicker">Get started</p>
+      <h2 id="l-start-h">Three steps, no key required</h2>
+      <ol class="l-start-grid">
+        <li class="l-start-card">
+          <h3>Add what you own</h3>
+          <p>Type a ticker or add a custom holding. Prices come from Yahoo — nothing else to set up.</p>
+          <a class="l-start-btn" href="#home/portfolio" data-l="app">Add a holding</a>
+        </li>
+        <li class="l-start-card">
+          <h3>See what the funds own</h3>
+          <p>Eleven funds, read straight from their latest SEC filings. No data to enter — just browse.</p>
+          <a class="l-start-btn" href="#money/funds" data-l="app">Explore the funds</a>
+        </li>
+        <li class="l-start-card">
+          <h3>Bring a key for the AI</h3>
+          <p>Optional. Any OpenAI-compatible endpoint in Settings — the app never stores or logs it.</p>
+          <a class="l-start-btn" href="#settings" data-l="app">Open Settings</a>
+        </li>
       </ol>
     </section>
 
@@ -57,32 +66,7 @@
       <div><b>No login.</b><span>There is no account; everything you keep lives in one file you can carry.</span></div>
       <div><b>No lookahead.</b><span>A backtest only ever sees what was known that day.</span></div>
       <div><b>Open source.</b><span>One repository, MIT licensed — run it on your own machine.</span></div>
-      <div><b>Your key, relayed, never stored.</b><span>It rides each request to your endpoint and is forgotten.</span></div>
-    </section>
-
-    <section class="l-start" aria-labelledby="l-start-h">
-      <p class="eyebrow l-eyebrow">Where to start</p>
-      <h2 id="l-start-h">Three steps, no key required</h2>
-      <div class="l-start-grid">
-        <div class="l-start-card">
-          <span class="l-num">01</span>
-          <h3>Add what you own</h3>
-          <p>Type a ticker or add a custom holding. Prices come from Yahoo — nothing else to set up.</p>
-          <a class="l-start-btn" href="#home/portfolio" data-l="app">Add a holding</a>
-        </div>
-        <div class="l-start-card">
-          <span class="l-num">02</span>
-          <h3>See what the funds own</h3>
-          <p>Eleven funds, read straight from their latest SEC 13F filings. No data to enter — just browse.</p>
-          <a class="l-start-btn" href="#money/funds" data-l="app">Explore the funds</a>
-        </div>
-        <div class="l-start-card">
-          <span class="l-num">03</span>
-          <h3>Bring a key for the AI</h3>
-          <p>Optional. Any OpenAI-compatible endpoint in Settings — the app never stores or logs it.</p>
-          <a class="l-start-btn" href="#settings" data-l="app">Open Settings</a>
-        </div>
-      </div>
+      <div><b>Your key stays yours.</b><span>It rides each request to your endpoint and is forgotten.</span></div>
     </section>
 
     <section class="l-host">
@@ -97,7 +81,7 @@ open  http://127.0.0.1:8010</pre>
 
     <footer class="l-foot">
       <span>Longview — the filings, decoded.</span>
-      <span>MIT license · <a href="#docs" data-l="docs">Docs</a> · <a href="#research" data-l="app">Research</a></span>
+      <span>MIT license · <a href="#docs" data-l="docs">Docs</a></span>
     </footer>
   </div>
 </div>
@@ -149,42 +133,6 @@ open  http://127.0.0.1:8010</pre>
     <div id="sub-portfolio" class="subpane">
       <h2>Your portfolio</h2>
       <p class="lede">Add what you own. Prices come from Yahoo.</p>
-      <div id="welcome" class="welcome" hidden>
-        <div class="welcome-head">
-          <div>
-            <p class="welcome-eyebrow">Welcome</p>
-            <h3>Where should we start?</h3>
-          </div>
-          <button id="welcome-dismiss" class="welcome-dismiss" type="button" aria-label="Hide this card">×</button>
-        </div>
-        <div class="welcome-steps">
-          <div class="welcome-step">
-            <span class="welcome-num">1</span>
-            <div class="welcome-text">
-              <strong>Add your first holding</strong>
-              <p>Type a ticker like AAPL, or add a custom one — prices come from Yahoo.</p>
-            </div>
-            <button id="welcome-add" class="btn primary small" type="button">Let's go</button>
-          </div>
-          <div class="welcome-step">
-            <span class="welcome-num">2</span>
-            <div class="welcome-text">
-              <strong>See what the funds own</strong>
-              <p>Eleven funds, from their latest SEC filings — no data to enter.</p>
-            </div>
-            <a class="btn ghost small" href="#money/funds">Browse the funds</a>
-          </div>
-          <div class="welcome-step">
-            <span class="welcome-num">3</span>
-            <div class="welcome-text">
-              <strong>Bring a key for the AI</strong>
-              <p>Optional — any OpenAI-compatible endpoint in Settings. The key is never stored.</p>
-            </div>
-            <a class="btn ghost small" href="#settings">Open Settings</a>
-          </div>
-        </div>
-        <p class="fineprint">No key needed to use the app — only for the AI features. Everything here saves to your one file.</p>
-      </div>
       <p id="pf-status" class="status"></p>
       <p id="pf-total" class="pf-total" hidden></p>
 
@@ -267,7 +215,14 @@ open  http://127.0.0.1:8010</pre>
           <tbody></tbody>
         </table>
       </div>
-      <div id="pf-empty" class="card">Nothing here yet — the add card above is where your holdings live.</div>
+      <div id="pf-empty" class="card pf-empty">
+        <p class="pf-empty-title">Nothing added yet.</p>
+        <p class="pf-empty-sub">Add your first holding above — or, if you're just curious what the funds own, start there instead.</p>
+        <div class="pf-empty-actions">
+          <button id="pf-add-first" class="btn primary" type="button">Add a holding</button>
+          <a class="btn ghost" href="#money/funds">Explore the funds</a>
+        </div>
+      </div>
 
       <p class="fineprint">Prices refresh every 10 minutes. Interval gains use price history. A dash means no data. Not advice.</p>
     </div>
@@ -786,6 +741,6 @@ python -m venv .venv
   </div>
 </div>
 <script src="/static/dcf.js?v=37"></script>
-<script src="/static/app.js?v=42"></script>
+<script src="/static/app.js?v=44"></script>
 </body>
 </html>

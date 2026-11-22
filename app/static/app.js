@@ -2363,41 +2363,11 @@ async function loadPortfolio(refresh = false) {
   }
 }
 
-/* ---------- first visit: a welcome card on the portfolio tab ----------
-   Shown only when the vault holds no positions and the reader has not
-   dismissed it. Held in localStorage, not the vault — it is a UX
-   preference, not data. */
-const WELCOME_KEY = "longview-welcome-dismissed";
-
-function welcomeDismissed() {
-  try { return localStorage.getItem(WELCOME_KEY) === "1"; } catch { return false; }
-}
-
-function updateWelcome(hasPositions) {
-  const card = $("#welcome");
-  if (!card) return;
-  card.hidden = hasPositions || welcomeDismissed();
-}
-
-function initWelcome() {
-  const dismiss = $("#welcome-dismiss");
-  if (dismiss) dismiss.addEventListener("click", () => {
-    try { localStorage.setItem(WELCOME_KEY, "1"); } catch { /* private mode */ }
-    const card = $("#welcome"); if (card) card.hidden = true;
-  });
-  const go = $("#welcome-add");
-  if (go) go.addEventListener("click", () => {
-    const q = $("#pf-q");
-    if (q) { q.focus(); q.scrollIntoView({ block: "center", behavior: "smooth" }); }
-  });
-}
-
 function renderPortfolio(d) {
   const has = d.positions.length > 0;
   $("#pf-empty").hidden = has;
   $("#pf-table-card").hidden = !has;
   $("#pf-total").hidden = !has;
-  updateWelcome(has);
   if (!has) { $("#pf-total").innerHTML = ""; return; }
   paintPfTotal(d.totals);
   paintPfPeriods();
@@ -4620,8 +4590,11 @@ $("#dir-q").addEventListener("input", () => {
 $("#dir-q").addEventListener("keydown", (e) => {
   if (e.key === "Enter") { clearTimeout(_dirT); dirSearch(); }
 });
-initWelcome();
-updateWelcome((PMF.data ? PMF.data.positions.length : 0) > 0);
+/* the empty-portfolio CTA focuses the ticker field and scrolls it into view */
+$("#pf-add-first").addEventListener("click", () => {
+  const q = $("#pf-q");
+  if (q) { q.focus(); q.scrollIntoView({ block: "center", behavior: "smooth" }); }
+});
 wsRestoreAll();
 applyHash();
 VAULT.sync();   // the newer of the server file and this mirror wins
