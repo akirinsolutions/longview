@@ -8,7 +8,8 @@ keep in it lives in one file you can carry anywhere, and the only
 thing you supply is a language-model key for the AI features.
 
 Run your own with the four lines in Quick start, or use the public
-instance (see The hosted version) — both run from this repository.
+instance at https://kirin123.pythonanywhere.com (see The hosted version)
+— both run from this repository.
 
 ## What it does
 
@@ -145,41 +146,43 @@ it holds. The file is the storage; the server just serves it.
 
 ## The hosted version
 
-The public instance runs this repository on a plain Python host,
-with nothing else on it. No Dockerfile, no database, no environment
-to set: `requirements.txt` is the whole dependency story, and the
-only way to run the app is
-
-```
-uvicorn app.main:app --port $PORT
-```
-
-The public instance lives on PythonAnywhere (free tier). To stand
-one up there:
-
-1. Sign up, then open a console tab and clone this repository into
-   your home directory: `git clone
-   https://github.com/akirinsolutions/longview.git && cd longview
-   && pip3 install --user -r requirements.txt`
-2. Create the ASGI site: `pa website create --asgi longview
-   longview` — it asks for a WSGI/ASGI path of the form
-   `module:app`; answer `app.main:app`.
-3. In the web tab, add an **Always on** schedule for the site. The
-   free tier sleeps a web app after ten minutes idle; the schedule
-   keeps it awake, at the cost of the day's always-on credit.
+The public instance: **https://kirin123.pythonanywhere.com**.
+No download, no login, no install — anyone can open the URL in a
+browser and use it. It runs this repository on PythonAnywhere
+(free tier) as an ASGI site that serves the app directly, with no
+Dockerfile, no database and no environment to set —
+`requirements.txt` is the whole dependency story.
 
 The instance ships without a model key, so its AI features run on
-the key each visitor brings in Settings (sent per request, relayed
-to the visitor's own endpoint, never stored).
+the key each visitor brings in Settings (sent per request,
+relayed to the visitor's own endpoint, never stored).
 
-One honest limitation, stated plainly: the data file lives on the
-host's disk, and it is shared — there is one file for the whole
-instance, so what any visitor saves is what the next one sees. Use
-the public instance freely, but if your work matters, download the
-file from Settings when you finish (Import puts it back any time,
-on the same instance or on your own). To keep a permanent home for
-your data, run your own Longview (the four lines in Quick start)
-and import the file there.
+Honesty list:
+
+- **Cold start.** The free tier sleeps an idle site; the first
+  request after a stretch of quiet can take 10–30 seconds while
+  the app wakes. Repeat requests are fast — around a second.
+- **One shared scratchpad.** The one file on the host is the one
+  everyone sees — what any visitor saves is what the next one
+  sees. Fine for playing, bad for a personal archive. If your
+  work matters, download the file from Settings when you finish
+  (Import puts it back any time, on the same instance or on your
+  own). To keep a permanent home for your data, run your own
+  Longview (the four lines in Quick start) and import the file
+  there.
+- **Outbound traffic goes through PythonAnywhere's proxy** (the
+  free-tier site process cannot open direct connections). The
+  app's proxy launcher sets that; SEC and Yahoo both answer
+  through it.
+
+To stand one up there yourself: clone the repository into your
+home directory, create a virtualenv and install `requirements.txt`,
+point an ASGI site's command at a small launcher that exports the
+proxy and runs uvicorn (`uvicorn app.main:app --uds ${DOMAIN_SOCKET}`),
+and reload. PythonAnywhere's free tier caps you at two consoles and
+roughly 100 CPU-seconds a day — the 13F work mostly runs off
+cache, but the directory build is the one job that leans on the
+quota, so don't refresh it on a whim.
 
 ## Where the data comes from
 
@@ -272,7 +275,7 @@ app/
                     reference material, no longer served
   static/           the front end: index.html, style.css, app.js,
                     dcf.js — hand-built, no frameworks
-tests/              432 offline tests
+tests/              434 offline tests
 data/               your data: one file (longview.json) holding every
                     section; created on first write, untracked
 cache/              downloaded data (prices, filings, directory);
@@ -285,7 +288,7 @@ cache/              downloaded data (prices, filings, directory);
 .venv/bin/python -m pytest tests/ -q
 ```
 
-432 tests, all offline: made-up prices, canned SEC-format XML, fake
+434 tests, all offline: made-up prices, canned SEC-format XML, fake
 filing indexes, and canned web responses. They never touch the
 network, and none of them calls a real model.
 

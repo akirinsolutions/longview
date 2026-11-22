@@ -1260,10 +1260,19 @@ works, and the old study section becomes the research section.
   tunnel from their Mac); the client-side file makes the free
   ephemeral ones honest options again. Their local 8010 self-host
   keeps the :8000 model env. The reader chose PythonAnywhere free:
-  the public instance lives there (setup steps in the README's
-  hosted section), an ASGI site via `pa website create --asgi` with
-  an always-on schedule, no model env — visitors bring a key per
-  request, and the one shared file is the documented scratchpad.
+  the live instance is at https://kirin123.pythonanywhere.com — an
+  ASGI site created via the PA API (free accounts get no
+  website-creation option in the UI; the command is
+  `/home/Kirin123/longview/start.sh`, a small launcher that exports
+  the free-tier proxy (`http_proxy`/`https_proxy` =
+  `http://proxy.server:3128`) and runs uvicorn with
+  `${DOMAIN_SOCKET}` — without the proxy the site process gets
+  ENETUNREACH for the SEC, Yahoo and other outbound traffic), no
+  model env, the one shared file is the documented scratchpad. Free
+  tier has no always-on schedules: the site sleeps when idle and
+  wakes on the next request (~10-30s cold, ~1s warm), 512 MB disk,
+  two consoles max, ~100 CPU-seconds a day. To operate it: reload
+  via the API; `git pull` in a console to update the code.
 
 Standing rules unchanged: no login, no new deps, RAM rule (never
 kill the :8000 model; tests never reach it), plain-English errors,
@@ -1276,5 +1285,5 @@ See `README.md`. Short version:
 ```
 cd beacon
 .venv/bin/uvicorn app.main:app --port 8010   # open http://localhost:8010
-.venv/bin/python -m pytest tests/ -q          # 432 tests, offline
+.venv/bin/python -m pytest tests/ -q          # 434 tests, offline
 ```
