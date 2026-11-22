@@ -1293,7 +1293,7 @@ def market_view(refresh: bool = False) -> dict:
         try:
             d = json.loads(view_path.read_text())
             if d.get("v") == _VIEW_VERSION and d.get("roster") == roster_fingerprint():
-                return d
+                return _apply_curated_metadata(d)
         except (json.JSONDecodeError, OSError):
             pass
 
