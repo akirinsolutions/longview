@@ -61,6 +61,16 @@ def test_saved_roster_picks_up_corrected_manager_labels(roster_path):
     assert saved["funds"][0]["manager"] == funds.FUNDS[0]["manager"]
 
 
+def test_cached_pool_gets_curated_labels_but_not_user_funds():
+    pool = {"funds": [
+        {"key": "tiger", "name": "Tiger Global", "manager": "Old Label"},
+        {"key": "custom", "name": "My Fund", "manager": "Me"},
+    ]}
+    out = funds._apply_curated_metadata(pool)
+    assert out["funds"][0]["manager"] == "Chase Coleman"
+    assert out["funds"][1] == {"key": "custom", "name": "My Fund", "manager": "Me"}
+
+
 def _fresh_cik_sub(form="13F-HR", date="2026-08-14"):
     return {"filings": {"recent": {"form": [form], "filingDate": [date]}}}
 

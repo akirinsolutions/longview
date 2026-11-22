@@ -172,6 +172,23 @@ def roster_fingerprint() -> str:
     return json.dumps(sorted((str(f["cik"]), f["key"]) for f in active_roster()))
 
 
+def _apply_curated_metadata(d: dict) -> dict:
+    """Overlay code-owned name/manager labels on a pool dict.
+
+    The scan cache holds whatever label was current when it was built.
+    Curated funds get their labels from FUNDS instead, so a corrected
+    manager name shows up even when the cached pool is still warm.
+    User-added funds are left exactly as they were saved.
+    """
+    curated = {f["key"]: f for f in FUNDS}
+    for f in d.get("funds") or []:
+        base = curated.get(f.get("key"))
+        if base is not None:
+            f["name"] = base["name"]
+            f["manager"] = base["manager"]
+    return d
+
+
 def get_fund(key: str) -> dict | None:
     return next((f for f in active_roster() if f["key"] == key), None)
 
@@ -1033,10 +1050,10 @@ def scan_pool(refresh: bool = False) -> dict:
         try:
             d = json.loads(path.read_text())
             if d.get("v") == _SCAN_VERSION and d.get("roster") == roster_fingerprint():
-                return d
+                return _apply_curated_metadata(d)
         except (json.JSONDecodeError, OSError):
             pass
-    d = _build_pool()
+    d = _apply_curated_metadata(_build_pool())
     try:
         path.write_text(json.dumps(d))
     except OSError:
