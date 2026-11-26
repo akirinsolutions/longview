@@ -170,6 +170,29 @@ private and metadata addresses refused — so a visitor's key can be
 relayed to an endpoint, never used to reach a machine behind a
 firewall.
 
+## Cloud backup (optional)
+
+The per-person files live on the host's disk, which a redeploy or a
+reset can wipe. The save file is one permanent copy; the cloud copy
+is the other one. Each file is a few kilobytes, so a durable home
+is cheap: a **private GitHub repository**, one file per signed-in
+person, a commit per backup.
+
+It is opt-in — the site operator sets two environment variables on
+the instance:
+
+```bash
+LONGVIEW_BACKUP_REPO=owner/repo    # the private repo
+LONGVIEW_BACKUP_TOKEN=...          # a GitHub token with contents:write
+```
+
+and a backup lands automatically after every save, at most once a
+minute per person (an explicit "Back up to the cloud" button in
+Settings forces one immediately). A failed backup never fails the
+save; the Settings page says what happened. The token never enters
+the bundle, the repo, or the response — the app sends it only to
+api.github.com.
+
 ## Sign in with Google (optional)
 
 The login card in Settings offers Google as a second way in, the

@@ -1329,6 +1329,25 @@ the flow. Requires the operator to create a Google Cloud OAuth client
 (the one manual step); the exchange and verification are fully
 tested offline (mocked token, real routes).
 
+## Decision 28 — cloud backup to a private GitHub repo (2026-11-26)
+
+The per-person files live on the host's disk, and the free tier wipes
+it on a redeploy or reset. A second, permanent copy is now the
+default: a private GitHub repository (`longview-data`), one file per
+signed-in person, a commit per backup, a few KB each.
+
+Best-effort by design: a failed backup never fails the save, and a
+per-user cooldown stops a noisy session from hammering the API. The
+backup fires from `vault.write_section` (fire-and-forget in a
+daemon thread) and from the explicit "Back up to the cloud" button
+in Settings. Configuration is two env vars, never a token in the
+bundle or the repo — the app sends it only to api.github.com.
+
+Requires the operator to set the repo and token (the repo is private;
+the backup is opt-in, never on by default). Verified live: a real
+backup round trip against the real repo, then a real delete to leave
+the repo clean.
+
 ## How to run
 
 See `README.md`. Short version:

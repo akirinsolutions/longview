@@ -39,9 +39,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from . import (accounts, backtest, directory, economy, funds, lab_research,
-               llm, market_data, netfix, notes, portfolio, research, risk,
-               savefile, strategy_lab, translator, vault)
+from . import (accounts, backup, backtest, directory, economy, funds,
+               lab_research, llm, market_data, netfix, notes, portfolio,
+               research, risk, savefile, strategy_lab, translator, vault)
 
 # Some networks hand the host no DNS servers at all (this one, right now):
 # install the DoH fallback so the web-facing paths (study search, Yahoo,
@@ -971,6 +971,16 @@ def vault_text():
 # import is a PUT. The client mirrors it in localStorage and syncs on
 # load; these routes are the file itself, on the server's side.
 # ---------------------------------------------------------------------------
+
+@app.post("/api/vault/backup")
+def vault_backup():
+    """Force a second copy of your file into the cloud backup repo.
+    Best-effort: a failed backup is reported, never raised."""
+    user = accounts.current_user()
+    if not user:
+        raise HTTPException(400, "Sign in first — anonymous use keeps the shared scratchpad, not yours.")
+    return backup.backup_vault(user, vault.load(), force=True)
+
 
 @app.get("/api/vault")
 def vault_get():

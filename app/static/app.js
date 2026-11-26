@@ -1150,6 +1150,24 @@ $("#vault-export-json").addEventListener("click", () => {
   st.textContent = "longview.json is downloading — the importable data file.";
 });
 
+$("#vault-backup").addEventListener("click", async () => {
+  const st = $("#vault-status");
+  const btn = $("#vault-backup");
+  st.className = "status";
+  st.textContent = "Backing up…";
+  if (btn) btn.disabled = true;
+  try {
+    const d = await api("/api/vault/backup", { method: "POST" });
+    st.className = d.ok ? "status" : "status error";
+    st.textContent = d.ok ? "Backed up — a copy of your file is in the cloud." : d.detail;
+  } catch (err) {
+    st.className = "status error";
+    st.textContent = err.message;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+});
+
 $("#vault-import").addEventListener("click", () => $("#vault-file").click());
 
 $("#vault-file").addEventListener("change", async (e) => {

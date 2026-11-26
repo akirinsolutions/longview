@@ -201,6 +201,28 @@ def write_section(name: str, envelope: dict | None) -> None:
         v["sections"][name] = envelope
         v["updated"] = int(time.time())
         _write_locked(v)
+    _fire_backup()
+
+
+def _fire_backup() -> None:
+    """Best-effort second copy in the cloud (a private repo). Never
+    raises, never blocks the write, never fails the save."""
+    from . import accounts, backup
+    user = accounts.current_user()
+    if not user or not backup.configured():
+        return
+    import threading
+
+    def go():
+        token = accounts.set_user(user)
+        try:
+            backup.backup_vault(user, load())
+        except Exception:
+            pass
+        finally:
+            accounts.reset_user(token)
+
+    threading.Thread(target=go, daemon=True).start()
 
 
 def replace(sections: dict, updated: int | None = None) -> dict:
