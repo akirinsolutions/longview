@@ -357,6 +357,10 @@ open  http://127.0.0.1:8010</pre>
           <button id="auth-signup" class="btn" type="button">Create an account</button>
         </div>
         <p id="auth-status" class="status"></p>
+        <div id="google-signin" hidden>
+          <div class="auth-or"><span>or</span></div>
+          <a id="google-signin-btn" class="btn ghost" href="/api/auth/google">Sign in with Google</a>
+        </div>
       </div>
       <div id="auth-signed-in" hidden>
         <p>Signed in as <b id="auth-name"></b>. Your data is yours alone: one file on the host, never shared with anyone else.</p>

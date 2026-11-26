@@ -47,6 +47,7 @@ SECRET_PATH = Path(os.environ.get("LONGVIEW_SECRET")
                    or DATA_DIR / "secret.key")
 
 COOKIE_NAME = "longview_session"
+COOKIE_GOOGLE_STATE = "longview_google"
 SESSION_SECONDS = 30 * 24 * 3600        # one month — a week is long enough to be honest
 SIGN_IN_MAX_FAILS = 5                  # per username, within this window
 SIGN_IN_WINDOW = 600                   # seconds
@@ -252,3 +253,136 @@ def has_accounts() -> bool:
     """Whether the instance has ever been signed up to — the gate the
     front end reads to know whether to show the sign-in card."""
     return bool(_read_store().get("users"))
+
+
+# ---------------------------------------------------------------------------
+# Google sign-in (OAuth 2.0 + OpenID Connect)
+#
+# A second way in, alongside the password form. The user clicks "Sign in
+# with Google", this module redirects to Google's authorization page,
+# Google redirects back with a code, and the exchange happens server-side
+# with the Client Secret held in the environment — never in the bundle.
+#
+# No JWT library: the id_token signature is verified by Google's own
+# tokeninfo endpoint (the documented "simple" path), which costs one
+# round trip to Google and no new dependencies. The stable identity is
+# Google's ``sub`` (an opaque, never-reused user id), never the email —
+# email addresses change, subs do not. A Google account is provisioning
+# for a fresh sign-in: no password, no salt beyond what the file needs
+# to look like a record.
+# ---------------------------------------------------------------------------
+
+GOOGLE_CLIENT_ID_ENV = "LONGVIEW_GOOGLE_CLIENT_ID"
+GOOGLE_CLIENT_SECRET_ENV = "LONGVIEW_GOOGLE_CLIENT_SECRET"
+GOOGLE_AUTHORIZE = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_TOKEN = "https://oauth2.googleapis.com/token"
+GOOGLE_TOKENINFO = "https://oauth2.googleapis.com/tokeninfo"
+
+
+def google_configured() -> bool:
+    """True when the instance carries the Google OAuth client pair."""
+    return bool(os.environ.get(GOOGLE_CLIENT_ID_ENV)
+                and os.environ.get(GOOGLE_CLIENT_SECRET_ENV))
+
+
+def google_auth_url(state: str, redirect_uri: str) -> str:
+    """The Google authorization URL the browser should go to."""
+    from urllib.parse import urlencode
+    params = {
+        "client_id": os.environ[GOOGLE_CLIENT_ID_ENV],
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "state": state,
+        "prompt": "select_account",
+    }
+    return f"{GOOGLE_AUTHORIZE}?{urlencode(params)}"
+
+
+def google_exchange_code(code: str, redirect_uri: str) -> dict:
+    """Exchange the authorization code for a token pair (server-side)."""
+    import httpx
+    r = httpx.post(
+        GOOGLE_TOKEN,
+        data={
+            "code": code,
+            "client_id": os.environ[GOOGLE_CLIENT_ID_ENV],
+            "client_secret": os.environ[GOOGLE_CLIENT_SECRET_ENV],
+            "redirect_uri": redirect_uri,
+            "grant_type": "authorization_code",
+        },
+        timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def google_verify_id_token(id_token: str, client_id: str) -> dict:
+    """Verify an id_token via Google's own tokeninfo endpoint.
+
+    Raises on anything that does not check out. Returns the claims
+    dict on success — never passes through anything unsigned."""
+    if not id_token:
+        raise ValueError("Google returned no id_token")
+    import httpx
+    r = httpx.get(GOOGLE_TOKENINFO,
+                  params={"id_token": id_token}, timeout=30)
+    r.raise_for_status()
+    claims = r.json()
+    if not isinstance(claims, dict):
+        raise ValueError("Google's answer didn't check out")
+    if claims.get("aud") != client_id:
+        raise ValueError("that token wasn't issued for this application")
+    iss = claims.get("iss") or ""
+    if iss not in ("accounts.google.com", "https://accounts.google.com"):
+        raise ValueError("that token came from the wrong issuer")
+    try:
+        exp = int(claims.get("exp") or 0)
+    except (TypeError, ValueError):
+        raise ValueError("that token has no usable expiry")
+    if exp <= time.time():
+        raise ValueError("that token has expired — sign in again")
+    if not claims.get("sub"):
+        raise ValueError("that token carries no stable identity")
+    return claims
+
+
+def _google_username(email: str, existing: set) -> str:
+    """A stable, valid username for a Google identity: the local part
+    of the email, lowercased and sanitized, de-duplicated."""
+    local = (email or "").split("@")[0].lower()
+    base = re.sub(r"[^a-z0-9_-]+", "-", local).strip("-_")[:28]
+    if not base:
+        base = "google"
+    if len(base) < 3:
+        base = (base + "-" + secrets.token_hex(2))[:3]
+    if not _USER_RE.match(base):
+        base = "google" + secrets.token_hex(3)
+    u, i = base, 2
+    while u in existing:
+        u = f"{base}-{i}"
+        i += 1
+    return u
+
+
+def google_provision_user(sub: str, email: str = "") -> str:
+    """Find the account for a Google sign-in, creating it if needed.
+
+    Matches by Google's stable ``sub`` first — a changed email does not
+    mint a new account. Returns the username (lowercased)."""
+    with _LOCK:
+        store = _read_store()
+        for u, rec in store.get("users", {}).items():
+            if rec.get("sub") == sub:
+                return u
+        u = _google_username(email, set(store.get("users", {})))
+        salt = secrets.token_bytes(16)
+        store["users"][u] = {
+            "salt": salt.hex(),
+            "hash": "",                    # google accounts have no password
+            "method": "google",
+            "sub": sub,
+            "created": int(time.time()),
+        }
+        _write_store(store)
+        return u

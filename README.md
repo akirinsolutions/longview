@@ -170,13 +170,38 @@ private and metadata addresses refused — so a visitor's key can be
 relayed to an endpoint, never used to reach a machine behind a
 firewall.
 
+## Sign in with Google (optional)
+
+The login card in Settings offers Google as a second way in, the
+same identity story: one file per person on the host, downloadable
+as plain text. It is not enabled by default — the site operator
+sets two environment variables on the instance:
+
+```bash
+LONGVIEW_GOOGLE_CLIENT_ID=...        # from a Google Cloud OAuth client
+LONGVIEW_GOOGLE_CLIENT_SECRET=...    # never committed, never in the bundle
+```
+
+and the flow is: "Sign in with Google" → redirect to Google →
+callback to `/api/auth/google/callback` → the server exchanges the
+code, verifies the token (via Google's own tokeninfo endpoint — no
+JWT library), provisions or matches the account by Google's stable
+`sub`, and signs you in with the same one-month cookie. A Google
+account has no password: the password form simply never matches one.
+
+For a Google OAuth client: Google Cloud Console → APIs & Services →
+Credentials → Create credentials → OAuth client ID (Web application) —
+redirect URIs are `https://<your-host>/api/auth/google/callback` (and `http://127.0.0.1:8010/api/auth/google/callback` for local self-host).
+
 ## Your data
 
-Sign in once — or create a free account — and everything you keep in
-the app lives in **its own file on the host**: one per person, at
-`data/users/<username>/longview.json`. The account file is small and
-yours alone; signing out keeps the file, and signing back in brings
-the same data back. Your browser holds a mirror of the file keyed by
+Sign in once — or create a free account, or sign in with Google —
+and everything you keep in the app lives in **its own file on the
+host**: one per person, at
+`data/users/<username>/longview.json`. The account file is small
+and yours alone; signing out keeps the file, and signing back in
+brings the same data back. Passwords are stored as PBKDF2-HMAC-SHA256
+hashes; a Google account has no password to remember. Your browser holds a mirror of the file keyed by
 your username; when you open the app the two compare and the newer
 one wins. In Settings the file is in your hands:
 

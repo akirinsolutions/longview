@@ -282,6 +282,16 @@ h3 {
 .set-card p { margin: 0; color: var(--sub); font-size: 13.5px; line-height: 1.6; max-width: 60ch; }
 .set-card p.dim { color: var(--faint); }
 .set-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.auth-or {
+  display: flex; align-items: center; gap: 12px;
+  font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--faint); margin: 4px 0 -6px;
+}
+.auth-or::before, .auth-or::after {
+  content: ""; flex: 1; border-top: 1px dashed var(--line);
+}
+#google-signin { margin-top: 14px; display: flex; flex-direction: column; gap: 10px; align-items: stretch; }
+#google-signin .btn { width: 100%; justify-content: center; }
 #set-effective { margin-top: 18px; }
 .dim { color: var(--faint); }
 .up { color: var(--up); }

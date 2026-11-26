@@ -4925,6 +4925,16 @@ async function cmpAskAi() {
    signed-in person (and the other way round). Signing in migrates
    anonymous data into the new account exactly once. */
 function renderAccount() {
+  // The Google button appears only when the instance is set up for it
+  // (a client ID + secret in the environment). Otherwise the instance
+  // says so instead of offering a 503.
+  fetch("/api/auth/config")
+    .then((r) => r.json())
+    .then((d) => {
+      const box = $("#google-signin");
+      if (box) box.hidden = !(d && d.google);
+    })
+    .catch(() => {});
   const user = AUTH.username;
   const signedOut = $("#auth-signed-out");
   const signedIn = $("#auth-signed-in");

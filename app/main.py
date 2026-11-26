@@ -20,9 +20,11 @@ Run:  .venv/bin/uvicorn app.main:app --port 8010
 """
 from __future__ import annotations
 
+import hmac
 import json
 import os
 import re
+import secrets
 import threading
 import time
 from pathlib import Path
@@ -32,7 +34,7 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -871,6 +873,77 @@ def auth_logout(request: Request):
     response = Response(
         content=json.dumps({"ok": True}), media_type="application/json")
     _set_session_cookie(response, "", 0, request.url.scheme == "https")
+    return response
+
+
+@app.get("/api/auth/config")
+def auth_config():
+    """What this instance supports — the Settings card hides Google
+    sign-in when the client pair is not set."""
+    return {"google": accounts.google_configured()}
+
+
+@app.get("/api/auth/google")
+def auth_google_start(request: Request):
+    """Send the browser to Google's authorization page. The state
+    cookie binds the callback to this browser; the exchange happens
+    server-side with the Client Secret, which never leaves the box."""
+    if not accounts.google_configured():
+        raise HTTPException(
+            503, "Google sign-in is not set up on this instance — "
+                 "the instance needs a Google OAuth client to offer it.")
+    state = secrets.token_urlsafe(24)
+    callback = f"{request.url.scheme}://{request.url.netloc}/api/auth/google/callback"
+    response = RedirectResponse(
+        accounts.google_auth_url(state, callback), status_code=302)
+    response.set_cookie(accounts.COOKIE_GOOGLE_STATE, state,
+                        max_age=600, httponly=True, samesite="lax",
+                        secure=request.url.scheme == "https", path="/")
+    return response
+
+
+@app.get("/api/auth/google/callback")
+def auth_google_callback(request: Request, code: str = "", state: str = ""):
+    """The return leg. Google bounces the browser back here with a
+    code; the server exchanges it for a token, verifies it, provisions
+    (or matches) the account, signs the person in, and sends the
+    browser home. Anything that fails is said in plain words."""
+    if not accounts.google_configured():
+        raise HTTPException(
+            503, "Google sign-in is not set up on this instance.")
+    cookie_state = request.cookies.get(accounts.COOKIE_GOOGLE_STATE)
+    if not cookie_state or not state or not hmac.compare_digest(cookie_state, state):
+        raise HTTPException(
+            400, "That Google sign-in didn't come from a real request — "
+                 "try again.")
+    cb = f"{request.url.scheme}://{request.url.netloc}/api/auth/google/callback"
+    try:
+        token = accounts.google_exchange_code(code, cb)
+    except Exception:
+        raise HTTPException(
+            502, "Couldn't talk to Google — try again in a moment.")
+    try:
+        claims = accounts.google_verify_id_token(
+            token.get("id_token", ""),
+            os.environ[accounts.GOOGLE_CLIENT_ID_ENV])
+    except Exception as e:
+        raise HTTPException(
+            502, f"That Google answer didn't check out: {e}. "
+                 "If you are signed into another Google account in this "
+                 "browser, that may be why — sign out of the wrong one "
+                 "and retry.")
+    sub = str(claims.get("sub") or "")
+    email = str(claims.get("email") or "")
+    try:
+        username = accounts.google_provision_user(sub, email)
+    except Exception:
+        raise HTTPException(400, "Couldn't finish that sign-in — try again.")
+    response = RedirectResponse("/#settings", status_code=302)
+    response.delete_cookie(accounts.COOKIE_GOOGLE_STATE, path="/")
+    response.set_cookie(
+        accounts.COOKIE_NAME, accounts.issue(username),
+        max_age=accounts.SESSION_SECONDS, httponly=True,
+        samesite="lax", secure=request.url.scheme == "https", path="/")
     return response
 
 

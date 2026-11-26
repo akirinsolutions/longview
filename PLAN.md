@@ -1306,6 +1306,29 @@ same 512 MB free-tier disk the app already uses. Anonymous use can
 still wipe the disk (the documented caveat); the save file is the
 permanent copy for anyone who cares about their data.
 
+## Decision 27 — Google sign-in (2026-11-26)
+
+A second way in, alongside the password form. The flow is plain
+OAuth 2.0 + OIDC: click "Sign in with Google" → redirect to Google →
+server exchanges the code (client secret in the env, never in the
+bundle) → token verified via Google's own tokeninfo endpoint (no JWT
+library) → account provisioned/matched by Google's stable `sub` → the
+same one-month cookie signs the person in.
+
+A Google account has no password: the password form never matches
+one. The username is derived from the email local part (sanitized,
+de-duplicated) and matches by `sub`, not email — email addresses
+change, subs do not. The sign-in card hides the Google button unless
+`LONGVIEW_GOOGLE_CLIENT_ID` + `LONGVIEW_GOOGLE_CLIENT_SECRET` are set,
+so an instance without the client says so instead of offering a 503.
+
+Cost: one redirect leg, one extra HTTP round trip to Google's
+tokeninfo, no new dependencies, no state beyond a short-lived
+httponly cookie that binds the callback to the browser that started
+the flow. Requires the operator to create a Google Cloud OAuth client
+(the one manual step); the exchange and verification are fully
+tested offline (mocked token, real routes).
+
 ## How to run
 
 See `README.md`. Short version:
