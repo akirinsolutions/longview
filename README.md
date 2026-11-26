@@ -105,6 +105,41 @@ Two notes:
   resolver is broken, the app falls back to DNS-over-HTTPS on its
   own; `LONGVIEW_DNS_FALLBACK=0` disables the fallback.
 
+## Deploying: Railway (free)
+
+A different host, for anyone who wants one. Railway deploys this
+repository straight from GitHub with a persistent volume — the
+per-person files outlive restarts, and there is no shared scratchpad
+for signed-in users. The app is a single container, so the Dockerfile
+in this directory is the whole recipe.
+
+Honest limits: the free plan is $1 of usage a month with no credit
+card (a one-time $5 trial in the first 30 days), 0.5 GB of volume,
+0.5 GB of RAM and a cold start when the service sleeps — the app is
+fine on that for a personal archive, and the save-file download is
+still the way to keep a permanent copy outside the host. The 13F
+work runs off cache, so the monthly usage stays small.
+
+```bash
+# once you have a free Railway account and an API token:
+railway login        # or: railway link with RAILWAY_TOKEN in the env
+railway init         # pick the project, or create one
+railway up           # builds from this Dockerfile
+```
+
+Then in the project's service settings: a **volume** mounted at
+`/data`, and the environment variables the Dockerfile bakes in are
+already correct (`LONGVIEW_VAULT=/data/longview.json` and friends).
+The platform sets `PORT`, which the launcher reads. On deploy, open
+the public URL, sign in, and keep your data in your own file —
+and download the save file from Settings when you finish.
+
+No Dockerfile hand-editing is needed: the image copies `app/` and
+runs `uvicorn app.main:app` with `${PORT}` as the port. Python 3.12
+is used (3.10+ supported); the free tier has no always-on worker —
+a cold start wakes on the next request, same as the PythonAnywhere
+free tier.
+
 ## The model key
 
 Every feature that uses a language model — Ask, the risk fill, the AI
