@@ -21,9 +21,10 @@
       <p class="l-sub">Where the world's largest investors actually bought, sold, and held — read straight from the 13F filings. Where your own portfolio actually stands. And where your own strategy would have stood, traded day by day on real history.</p>
       <div class="l-ctas">
         <button id="l-enter" class="l-btn" type="button">Open the app</button>
+        <a class="l-btn" href="#settings" data-l="settings">Sign in</a>
         <a class="l-btn ghost" href="#docs" data-l="docs">Self-host it</a>
       </div>
-      <p class="l-hint">No account, no install, no tracking.</p>
+      <p class="l-hint">No install, no tracking — sign in to keep your own data, one file per person, downloadable as plain text.</p>
     </section>
 
     <section class="l-grid3" aria-label="What it does">
@@ -64,7 +65,7 @@
     </section>
 
     <section class="l-rules">
-      <div><b>No login.</b><span>There is no account; everything you keep lives in one file you can carry.</span></div>
+      <div><b>Sign in, your own file.</b><span>Every person gets their own data file on the host — signed in, stored per person, downloadable as plain text.</span></div>
       <div><b>No lookahead.</b><span>A backtest only ever sees what was known that day.</span></div>
       <div><b>Open source.</b><span>One repository, MIT licensed — run it on your own machine.</span></div>
       <div><b>Your key stays yours.</b><span>It rides each request to your endpoint and is forgotten.</span></div>
@@ -73,7 +74,7 @@
     <section class="l-host">
       <div>
         <h2>Self-host it in an afternoon</h2>
-        <p class="l-sub2">One Python process, no database, no cloud. Clone the repository and run it.</p>
+        <p class="l-sub2">One Python process, no database, no cloud. Clone the repository and run it. Accounts live in a small file beside the vault.</p>
       </div>
       <pre class="l-code">pip install -r requirements.txt
 uvicorn app.main:app --port 8010
@@ -89,6 +90,7 @@ open  http://127.0.0.1:8010</pre>
 <div id="app">
 <aside class="sidebar">
   <div class="brand">Longview<span class="brand-sub">Smart-money research desk</span></div>
+  <div id="side-auth" class="side-auth"><span class="dim">Sign in</span></div>
   <nav class="nav-group">
     <a class="nav" data-route="home" href="#home/portfolio">Home</a>
   </nav>
@@ -337,6 +339,32 @@ open  http://127.0.0.1:8010</pre>
   <!-- ============ SETTINGS · bring your own model key ============ -->
   <section id="tab-settings" class="tabpane">
     <h2>Settings</h2>
+    <p class="lede">Your account and your model key. Everything in this app that uses a model — the ask, the fills, the AI backtest, the notes — runs on it.</p>
+    <div class="set-card" id="auth-card">
+      <h3>Your account</h3>
+      <div id="auth-signed-out">
+        <p>Sign in — or create a free account — and your data (portfolio, notes, risk moves, followed funds, research reports, economy edits) lives in its own file on the host. No cloud account, no database: one small file per person, yours to keep and download as plain text.</p>
+        <div class="field">
+          <label for="auth-user">Username</label>
+          <input id="auth-user" type="text" autocomplete="username" spellcheck="false" minlength="3" maxlength="32" placeholder="your-name">
+        </div>
+        <div class="field">
+          <label for="auth-pass">Password <span class="dim">(at least 8 characters)</span></label>
+          <input id="auth-pass" type="password" autocomplete="current-password" minlength="8" placeholder="••••••••">
+        </div>
+        <div class="set-actions">
+          <button id="auth-login" class="btn primary" type="button">Sign in</button>
+          <button id="auth-signup" class="btn" type="button">Create an account</button>
+        </div>
+        <p id="auth-status" class="status"></p>
+      </div>
+      <div id="auth-signed-in" hidden>
+        <p>Signed in as <b id="auth-name"></b>. Your data is yours alone: one file on the host, never shared with anyone else.</p>
+        <div class="set-actions">
+          <button id="auth-logout" class="btn" type="button">Sign out</button>
+        </div>
+      </div>
+    </div>
     <p class="lede">Your own language-model key. Everything in this app that uses a model — the ask, the fills, the AI backtest, the notes — runs on it. The key is stored only in this browser and sent with each request; the app never stores or logs it. If the server is deployed with its own key, yours simply takes precedence when set.</p>
     <div class="set-card">
       <div class="field">
@@ -360,14 +388,16 @@ open  http://127.0.0.1:8010</pre>
     </div>
     <div class="set-card">
       <h3>Your data</h3>
-      <p>One file holds everything you keep in the app — portfolio, notes, risk moves, followed funds, research reports, the economy tree. Your browser mirrors it; on open the two compare and the newer one wins. Download the file to keep a copy, or import one back.</p>
+      <p>One file holds everything you keep in the app — portfolio, notes, risk moves, followed funds, research reports, the economy tree. It lives on the host — your own file once you're signed in. Your browser mirrors it; on open the two compare and the newer one wins. Download the save file to keep a copy, or import a JSON file back.</p>
       <p id="vault-summary" class="dim"></p>
       <div class="set-actions">
-        <button id="vault-export" class="btn" type="button">Download the file</button>
-        <button id="vault-import" class="btn" type="button">Import a file</button>
+        <button id="vault-export" class="btn primary" type="button">Download save file (text)</button>
+        <button id="vault-export-json" class="btn" type="button">Download (JSON)</button>
+        <button id="vault-import" class="btn" type="button">Import a JSON file</button>
         <input id="vault-file" type="file" accept=".json,application/json" hidden>
       </div>
       <p id="vault-status" class="status"></p>
+      <p id="vault-signed-out-note" class="status dim" hidden></p>
     </div>
     <p id="set-effective" class="dim"></p>
   </section>
@@ -375,7 +405,7 @@ open  http://127.0.0.1:8010</pre>
   <!-- ============ DOCS · running it, and how it stays honest ============ -->
   <section id="tab-docs" class="tabpane">
     <h2>Docs</h2>
-    <p class="lede">One repository, one Python process, no database, no cloud. This is how to run it, how the key works, and the rules that keep the numbers honest.</p>
+    <p class="lede">One repository, one Python process, no database. This is how to run it, how the key works, and the rules that keep the numbers honest.</p>
 
     <div class="doc-card">
       <h3>Run it</h3>
@@ -400,8 +430,8 @@ python -m venv .venv
 
     <div class="doc-card">
       <h3>Your data</h3>
-      <p>There is no login and no account. Everything you keep in the app lives in one file on the app's machine: <code>data/longview.json</code> — portfolio, notes, risk moves, followed funds, research reports, the economy tree. Your browser holds a mirror of it; when you open the app the two compare and the newer one wins.</p>
-      <p>In Settings you can download the file — that is your whole data, portable to any Longview — and import one back. Nothing you enter leaves except the market-data lookups (public sources: Yahoo Finance, SEC EDGAR — they see nothing of yours) and, when a model key is set, the requests to your own model endpoint: your question or goal, a digest of your data, and the key.</p>
+      <p>Sign in — or create a free account — and everything you keep in the app lives in its own file, per person, on the host: <code>data/users/&lt;username&gt;/longview.json</code>. Signing out keeps the file; anonymous use keeps the shared file at <code>data/longview.json</code>, exactly as before. Your browser holds a mirror of the file; when you open the app the two compare and the newer one wins.</p>
+      <p>In Settings you can download the save file — plain text, one file, everything you own — or the JSON data file, which is the one that round-trips through Import. Nothing you enter leaves except the market-data lookups (public sources: Yahoo Finance, SEC EDGAR — they see nothing of yours) and, when a model key is set, the requests to your own model endpoint: your question or goal, a digest of your data, and the key.</p>
     </div>
 
     <div class="doc-card">

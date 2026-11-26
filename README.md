@@ -3,9 +3,11 @@
 Longview is a research desk for equity investors. It reads public
 data — 13F filings, live prices, twenty years of market history, a
 map of where the world's wealth is held — and turns it into working
-tools. One Python process, no database, no login: everything you
-keep in it lives in one file you can carry anywhere, and the only
-thing you supply is a language-model key for the AI features.
+tools. One Python process, no database: everything you keep in it
+lives in one file you can carry anywhere, and the only thing you
+supply is a language-model key for the AI features. Sign in — or
+create a free account — and your data is yours alone: one file per
+person, stored on the host, downloadable as plain text.
 
 Run your own with the four lines in Quick start, or use the public
 instance at https://kirin123.pythonanywhere.com (see The hosted version)
@@ -135,20 +137,37 @@ firewall.
 
 ## Your data
 
-There is no login and no account, because there is no per-person
-storage: one file. Everything you keep in the app — your portfolio,
-your notes, your risk moves, your followed funds, your research
-reports, the economy tree — lives in `data/longview.json`, and your
-browser holds a mirror of it. When you open the app the two compare
-and the newer one wins. In Settings the file is in your hands:
-download it (that is your whole data), import one back, and see what
-it holds. The file is the storage; the server just serves it.
+Sign in once — or create a free account — and everything you keep in
+the app lives in **its own file on the host**: one per person, at
+`data/users/<username>/longview.json`. The account file is small and
+yours alone; signing out keeps the file, and signing back in brings
+the same data back. Your browser holds a mirror of the file keyed by
+your username; when you open the app the two compare and the newer
+one wins. In Settings the file is in your hands:
+
+- **Download the save file** — plain text, everything you own, for
+  keeping a copy. It is not the importable format.
+- **Download the JSON** — the data file: the one that round-trips
+  through Import.
+- **Import a JSON file** — puts a copy of your data back.
+
+Sign in is the whole story for personal data. Anonymous use is still
+fine for exploring: it keeps the one shared file at
+`data/longview.json`, the one everyone sees — read it, play with it,
+but sign in before you start keeping anything. The file is the
+storage; the server just serves it.
+
+The save file is plain text by design: no JSON, no markup, a readable
+record of every section of your file — the portfolio (ticker, name,
+shares, cost, date), your risk moves, every note page and its saved
+pieces, your followed funds, your research reports (body capped to
+keep the file readable), and the state of the economy tree.
 
 ## The hosted version
 
 The public instance: **https://kirin123.pythonanywhere.com**.
-No download, no login, no install — anyone can open the URL in a
-browser and use it. It runs this repository on PythonAnywhere
+No download, no install — anyone can open the URL in a browser and
+use it. Sign in once and your data lives in its own file on the host. It runs this repository on PythonAnywhere
 (free tier) as an ASGI site that serves the app directly, with no
 Dockerfile, no database and no environment to set —
 `requirements.txt` is the whole dependency story.
@@ -162,14 +181,22 @@ Honesty list:
 - **Cold start.** The free tier sleeps an idle site; the first
   request after a stretch of quiet can take 10–30 seconds while
   the app wakes. Repeat requests are fast — around a second.
-- **One shared scratchpad.** The one file on the host is the one
-  everyone sees — what any visitor saves is what the next one
-  sees. Fine for playing, bad for a personal archive. If your
-  work matters, download the file from Settings when you finish
-  (Import puts it back any time, on the same instance or on your
-  own). To keep a permanent home for your data, run your own
-  Longview (the four lines in Quick start) and import the file
-  there.
+- **One shared scratchpad for anonymous users.** A visitor who never
+  signs in keeps the one shared file — read it, play with it, but
+  everything anonymous lands in the same scratchpad, and the next
+  anonymous visitor sees it. Signed-in users get their own file;
+  signing in also migrates any anonymous data your browser holds
+  into your account, once. If your work matters, download the save
+  file from Settings when you finish (Import puts it back any time,
+  on the same instance or on your own). To keep a permanent home
+  for your data, run your own Longview (the four lines in Quick
+  start) and import the file there.
+- **Free tier storage.** Per-person files live on the same free
+  disk as the app — capped at 512 MB in total, and the 100
+  CPU-seconds/day budget is shared with the 13F work. Downloading
+  the save file when you finish is the only way to keep a copy
+  outside the host. There is no delete-account button yet: to
+  remove a person's file, delete the folder on the host.
 - **Outbound traffic goes through PythonAnywhere's proxy** (the
   free-tier site process cannot open direct connections). The
   app's proxy launcher sets that; SEC and Yahoo both answer

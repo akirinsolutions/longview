@@ -37,9 +37,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from . import (backtest, directory, economy, funds, lab_research, llm,
-               market_data, netfix, notes, portfolio, research, risk,
-               strategy_lab, translator, vault)
+from . import (accounts, backtest, directory, economy, funds, lab_research,
+               llm, market_data, netfix, notes, portfolio, research, risk,
+               savefile, strategy_lab, translator, vault)
 
 # Some networks hand the host no DNS servers at all (this one, right now):
 # install the DoH fallback so the web-facing paths (study search, Yahoo,
@@ -100,6 +100,38 @@ class LLMOverrideMiddleware:
 
 
 app.add_middleware(LLMOverrideMiddleware)
+
+
+class AuthMiddleware:
+    """Hold the signed-in user in the context where the vault resolves.
+
+    The session cookie rides along on every request as ``longview_session``
+    (httponly, samesite=lax — no CSRF surface of its own beyond the app's
+    own actions). This is a plain ASGI middleware, the same pattern as the
+    model-key override, so the context variable survives into the route
+    handlers, which run in the same task. A missing or bad cookie simply
+    means anonymous use, exactly like a first visit.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            headers = {k.lower(): v for k, v in scope.get("headers", [])}
+            raw = headers.get(b"cookie")
+            username = None
+            if raw:
+                for part in raw.decode("latin-1").split(";"):
+                    k, _, v = part.strip().partition("=")
+                    if k == accounts.COOKIE_NAME:
+                        username = accounts.read_token(v)
+                        break
+            accounts.set_user(username)
+        await self.app(scope, receive, send)
+
+
+app.add_middleware(AuthMiddleware)
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -743,7 +775,7 @@ def research_run_start(req: ResearchRunRequest, request: Request):
     cannot see the request's key."""
     config = llm.resolve()
     try:
-        return research.start_run(req.goal, config)
+        return research.start_run(req.goal, config, user=accounts.current_user())
     except RuntimeError as e:
         raise HTTPException(400, str(e))
 
@@ -778,6 +810,90 @@ def research_delete(rid: str):
 
 
 # ---------------------------------------------------------------------------
+# Accounts and the private save file — the login feature. Sign in once,
+# and your data lives in its own file on the host (one per person, no
+# database, just the free disk); the save file is plain text, downloadable
+# from Settings. Sign out with one click; anonymous use keeps the shared
+# file exactly as it was.
+# ---------------------------------------------------------------------------
+
+class _Creds(BaseModel):
+    username: str = Field("", max_length=40)
+    password: str = Field("", max_length=300)
+
+
+def _set_session_cookie(response, value: str, max_age: int | None, secure: bool):
+    response.set_cookie(
+        accounts.COOKIE_NAME, value, max_age=max_age, httponly=True,
+        samesite="lax", secure=secure, path="/")
+
+
+@app.post("/api/auth/signup")
+def auth_signup(req: _Creds, request: Request):
+    """Create a free account. 400 in plain English on a bad name or
+    a short password; then the client signs the user in."""
+    try:
+        username = accounts.signup(req.username, req.password)
+    except accounts.AccountError as e:
+        raise HTTPException(400, str(e))
+    token = accounts.issue(username)
+    response = Response(
+        content=json.dumps({"ok": True, "username": username}),
+        media_type="application/json", status_code=201)
+    _set_session_cookie(response, token, accounts.SESSION_SECONDS,
+                        request.url.scheme == "https")
+    return response
+
+
+@app.post("/api/auth/login")
+def auth_login(req: _Creds, request: Request):
+    """Sign in. The cookie is set on the response; a wrong name or
+    password is the same 401 every time."""
+    try:
+        username = accounts.login(req.username, req.password)
+    except accounts.ThrottleError as e:
+        raise HTTPException(429, str(e))
+    except accounts.AccountError as e:
+        raise HTTPException(401, str(e))
+    token = accounts.issue(username)
+    response = Response(
+        content=json.dumps({"ok": True, "username": username}),
+        media_type="application/json", status_code=200)
+    _set_session_cookie(response, token, accounts.SESSION_SECONDS,
+                        request.url.scheme == "https")
+    return response
+
+
+@app.post("/api/auth/logout")
+def auth_logout(request: Request):
+    """Sign out: expire the cookie. The per-person file is untouched —
+    signing out only ends the session."""
+    response = Response(
+        content=json.dumps({"ok": True}), media_type="application/json")
+    _set_session_cookie(response, "", 0, request.url.scheme == "https")
+    return response
+
+
+@app.get("/api/auth/me")
+def auth_me():
+    """Who is signed in, for the Settings page and the sidebar chip."""
+    user = accounts.current_user()
+    return {"authenticated": bool(user), "username": user}
+
+
+@app.get("/api/vault/text")
+def vault_text():
+    """The save file — everything the reader owns, as plain text.
+
+    This is the file a person downloads and keeps. The JSON export in
+    Settings round-trips through Import; this one is for reading."""
+    return Response(
+        content=savefile.render(username=accounts.current_user()),
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition":
+                 'attachment; filename="longview-save.txt"'})
+
+
 # The vault — one file for everything the reader owns. Export is a GET;
 # import is a PUT. The client mirrors it in localStorage and syncs on
 # load; these routes are the file itself, on the server's side.

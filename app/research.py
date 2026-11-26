@@ -30,7 +30,7 @@ import threading
 import time
 from typing import Optional
 
-from . import llm, vault, web
+from . import accounts, llm, vault, web
 
 _SECTION = "research"
 _VERSION = 1
@@ -476,11 +476,24 @@ def _finish(job_id: str, status: str, message: str,
         job["done"] = time.time()
 
 
-def _run_worker(job_id: str, goal: str, config: dict | None = None) -> None:
+def _run_worker(job_id: str, goal: str, config: dict | None = None,
+                user: str | None = None) -> None:
     """The background thread: gather, then write the report through the
     same tail a run needs. Never raises — the job records it.
     ``config`` is captured at request time: a fresh thread cannot see
-    the request's model key, so its route passes the settings in."""
+    the request's model key, so its route passes the settings in. The
+    same is true of the identity: a signed-in person's report must land
+    in *their* file, so the route passes the username and the worker
+    sets it for the duration of the run."""
+    token = accounts.set_user(user) if user else None
+    try:
+        _run_worker_inner(job_id, goal, config)
+    finally:
+        if token is not None:
+            accounts.reset_user(token)
+
+
+def _run_worker_inner(job_id: str, goal: str, config: dict | None = None) -> None:
     def report(msg: str) -> None:
         with _JOBS_LOCK:
             job = _JOBS.get(job_id)
@@ -566,9 +579,12 @@ def _job_view(job: dict) -> dict:
     }
 
 
-def start_run(goal: str, config: dict | None = None) -> dict:
+def start_run(goal: str, config: dict | None = None,
+               user: str | None = None) -> dict:
     """Create a run job and start its thread. Raises RuntimeError in
-    plain English for a goal too short to be a goal."""
+    plain English for a goal too short to be a goal. ``user`` is the
+    signed-in person the run is for, if any — the report lands in
+    that person's file."""
     import secrets
 
     goal = (goal or "").strip()
@@ -593,7 +609,7 @@ def start_run(goal: str, config: dict | None = None) -> dict:
         _prune_jobs()
         _JOBS[job["id"]] = job
     threading.Thread(
-        target=_run_worker, args=(job["id"], goal, config),
+        target=_run_worker, args=(job["id"], goal, config, user),
         daemon=True, name=f"research-{job['id']}").start()
     return _job_view(job)
 

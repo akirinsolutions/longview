@@ -1,5 +1,9 @@
 """One file for everything the reader owns.
 
+In a signed-in session the file is per person: ``data/users/<username>/longview.json``
+(no external service, no database — the free host's disk is the cloud).
+In an anonymous session it stays the one shared file, as before.
+
 All of the app's user data — the portfolio, the note pages, the risk
 moves, the fund roster, the research reports, the economy-tree
 overrides — lives in a single JSON file:
@@ -58,6 +62,23 @@ VAULT_PATH = Path(os.environ.get(
     os.environ.get("PROOF_VAULT", str(LEGACY_DIR / "longview.json")),
 ))
 
+#: Where per-user vault files live (anonymous mode never writes here).
+USERS_DIR = Path(os.environ.get("LONGVIEW_USERS_DIR")
+                 or str(LEGACY_DIR / "users"))
+
+
+def current_path() -> Path:
+    """The vault file in effect for this scope: the signed-in user's
+    file when one is set (request context or an explicitly-passed
+    thread), otherwise the shared file. A fresh per-user file is empty
+    and is only written on first save."""
+    from . import accounts  # lazy: the vault must not import the store
+    user = accounts.current_user()
+    if not user:
+        return VAULT_PATH
+    return USERS_DIR / user / "longview.json"
+
+
 VERSION = 1
 
 #: Section name → the legacy file it was folded in from, in the order
@@ -87,7 +108,7 @@ def _skeleton() -> dict:
 def _read_file() -> dict | None:
     """The vault file as a normalised dict, or None if missing/corrupt."""
     try:
-        d = json.loads(VAULT_PATH.read_text(encoding="utf-8"))
+        d = json.loads(current_path().read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
     if not isinstance(d, dict) or d.get("v") != VERSION:
@@ -124,10 +145,11 @@ def _legacy_section(name: str) -> dict | None:
 
 def _write_locked(v: dict) -> None:
     """Atomic write; the caller holds the lock."""
-    VAULT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    tmp = VAULT_PATH.with_name(VAULT_PATH.name + ".tmp")
+    path = current_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(json.dumps(v, indent=1), encoding="utf-8")
-    tmp.replace(VAULT_PATH)
+    tmp.replace(path)
 
 
 def _load_locked() -> dict:
@@ -135,9 +157,13 @@ def _load_locked() -> dict:
     v = _read_file()
     if v is not None:
         return v
-    # The file is missing (or unreadable): seed the sections from the
-    # legacy files still on disk. A clean machine with neither gets an
-    # empty skeleton and no file is written until something saves.
+    # The file is missing (or unreadable). Only anonymous use seeds
+    # from the legacy files still on disk — a signed-in person's file
+    # is their own and is never seeded from anyone else's.
+    from . import accounts
+    anonymous = not accounts.current_user()
+    if not anonymous:
+        return _skeleton()
     found = False
     v = _skeleton()
     for name in SECTIONS:

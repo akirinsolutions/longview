@@ -1278,6 +1278,34 @@ Standing rules unchanged: no login, no new deps, RAM rule (never
 kill the :8000 model; tests never reach it), plain-English errors,
 72-col wrap, data/ preserved.
 
+## Decision 26 — accounts + a per-person file (2026-11-26)
+
+The shared one-file design stayed the anonymous default, but the
+product now signs in. One account per person (username + password,
+PBKDF2-HMAC-SHA256, one httponly cookie, no server session store);
+an account owns its own file — `data/users/<username>/longview.json`
+on the free host, the only "cloud" the free tier offers. The
+per-request context is set by a plain ASGI middleware (same pattern
+as the model-key override), and background research runs capture the
+username and set it in the thread — the report always lands in the
+right person's file.
+
+Login/sign-out is not a gate on browsing: anonymous use keeps the
+shared file exactly as before (the self-host story is unchanged), the
+sign-in card lives in Settings, and anonymous data in the browser
+mirror migrates into a new account once, at sign-in. Sign-out ends
+the session and clears the mirror; the file stays on the host.
+
+The downloadable file is plain text now — `longview-save.txt` — with
+the JSON file still the importable format. The save file is a copy
+for reading; Import stays JSON.
+
+Cost: no new dependencies, one small store (`data/accounts.json`),
+one secret (`data/secret.key`), and the per-person files inside the
+same 512 MB free-tier disk the app already uses. Anonymous use can
+still wipe the disk (the documented caveat); the save file is the
+permanent copy for anyone who cares about their data.
+
 ## How to run
 
 See `README.md`. Short version:
@@ -1285,5 +1313,5 @@ See `README.md`. Short version:
 ```
 cd beacon
 .venv/bin/uvicorn app.main:app --port 8010   # open http://localhost:8010
-.venv/bin/python -m pytest tests/ -q          # 434 tests, offline
+.venv/bin/python -m pytest tests/ -q          # 463 tests, offline
 ```

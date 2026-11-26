@@ -35,26 +35,51 @@ const LLM = {
 };
 LLM.load();
 
+/* ---------------- accounts & sessions ----------------
+   Sign in once, and everything the reader keeps lives in their own
+   file on the host — one per-person vault, mirrored in this browser
+   under a username-keyed name. Signing out ends the session; the
+   files stay on the host. */
+const AUTH = {
+  /* The signed-in username (null = anonymous, the shared file). */
+  username: null,
+  /* Ask the server who is signed in. Never throws — anonymous is the
+     answer when the request itself fails. */
+  async init() {
+    try {
+      const res = await fetch("/api/auth/me");
+      const d = await res.json().catch(() => ({}));
+      this.username = d.authenticated ? d.username : null;
+    } catch { this.username = null; }
+    renderAccount();
+    return this.username;
+  },
+};
+
 /* ---------------- Your data: one file, mirrored in this browser ----------------
-   The app keeps everything the reader owns in one file on its machine.
-   The client holds a mirror in local storage; on load the two compare
-   and the newer one wins (a newer mirror is pushed up). Any section
-   write makes the mirror stale — it refreshes itself. Export is a
-   download of the file; import is a file picked back in. */
+   The app keeps everything the reader owns in one file. The client
+   holds a mirror in local storage (keyed by username once signed in —
+   an anonymous mirror is never offered to a signed-in person); on load
+   the two compare and the newer one wins (a newer mirror is pushed up).
+   Any section write makes the mirror stale — it refreshes itself.
+   Export is a download of the file (text for reading, JSON for
+   import); import is a file picked back in. */
 const VAULT = {
-  key: "longview-vault",
+  key() {
+    return "longview-vault" + (AUTH.username ? ":" + AUTH.username : "");
+  },
   data: null,
   load() {
     try {
-      const s = JSON.parse(localStorage.getItem(this.key) || "null");
+      const s = JSON.parse(localStorage.getItem(this.key()) || "null");
       this.data = (s && s.v === 1 && s.sections) ? s : null;
     } catch { this.data = null; }   // private mode: run on the server's file
     return this;
   },
   save() {
     try {
-      if (this.data) localStorage.setItem(this.key, JSON.stringify(this.data));
-      else localStorage.removeItem(this.key);
+      if (this.data) localStorage.setItem(this.key(), JSON.stringify(this.data));
+      else localStorage.removeItem(this.key());
     } catch { /* private mode */ }
   },
   /* The load sync. The server file and this mirror race on `updated`;
@@ -1091,7 +1116,30 @@ function vaultSummary() {
     : "Nothing on file yet — add holdings, save notes, or research a goal, and it will appear here.";
 }
 
-$("#vault-export").addEventListener("click", () => {
+$("#vault-export").addEventListener("click", async () => {
+  const st = $("#vault-status");
+  st.className = "status";
+  st.textContent = "Building the save file…";
+  try {
+    const res = await fetch("/api/vault/text");
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      throw new Error(d.detail || "The save file didn't come through.");
+    }
+    const blob = await res.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "longview-save.txt";
+    a.click();
+    URL.revokeObjectURL(a.href);
+    st.textContent = "longview-save.txt is downloading — plain text, everything you own.";
+  } catch (err) {
+    st.className = "status error";
+    st.textContent = err.message;
+  }
+});
+
+$("#vault-export-json").addEventListener("click", () => {
   const st = $("#vault-status");
   if (!VAULT.export()) {
     st.className = "status error";
@@ -1099,7 +1147,7 @@ $("#vault-export").addEventListener("click", () => {
     return;
   }
   st.className = "status";
-  st.textContent = "longview.json is downloading — that is your whole data.";
+  st.textContent = "longview.json is downloading — the importable data file.";
 });
 
 $("#vault-import").addEventListener("click", () => $("#vault-file").click());
@@ -4871,6 +4919,130 @@ async function cmpAskAi() {
   renderCompare();
 }
 
+/* ---------------- accounts: sign in, sign out, migrate ----------------
+   One account per person; one file per account on the host. The mirror
+   is keyed by username so an anonymous mirror is never offered to a
+   signed-in person (and the other way round). Signing in migrates
+   anonymous data into the new account exactly once. */
+function renderAccount() {
+  const user = AUTH.username;
+  const signedOut = $("#auth-signed-out");
+  const signedIn = $("#auth-signed-in");
+  if (signedOut) signedOut.hidden = !!user;
+  if (signedIn) signedIn.hidden = !user;
+  const nameEl = $("#auth-name");
+  if (nameEl && user) nameEl.textContent = user;
+  const chip = $("#side-auth");
+  if (chip) {
+    if (user) {
+      chip.innerHTML = `<span class="side-auth-name">Signed in as <b>${esc(user)}</b></span>`
+        + ` <button id="side-signout" class="side-signout" type="button">Sign out</button>`;
+      const btn = $("#side-signout");
+      if (btn) btn.addEventListener("click", () => doSignOut());
+    } else {
+      chip.innerHTML = `<a href="#settings">Sign in</a>`;
+    }
+  }
+  const note = $("#vault-signed-out-note");
+  if (note) {
+    note.hidden = !!user;
+    note.textContent = user ? ""
+      : "Anonymous use keeps the one shared file — sign in to keep your data as your own.";
+  }
+}
+
+/* After a successful sign-in: the per-user mirror takes over. If the
+   browser is holding an anonymous file, that data follows the person
+   into their account — once, and only when the account has nothing. */
+async function onSignedIn(username) {
+  AUTH.username = username;
+  VAULT.load();
+  await migrateAnonymousDataToAccount();
+  $("#auth-user").value = "";
+  $("#auth-pass").value = "";
+  renderAccount();
+  VAULT.sync().then(() => vaultSummary());
+  const st = $("#auth-status");
+  if (st) { st.className = "status"; st.textContent = "Signed in as " + username + " — your data is yours alone."; }
+}
+
+async function migrateAnonymousDataToAccount() {
+  try {
+    const raw = localStorage.getItem("longview-vault");
+    if (!raw) return;
+    const anon = JSON.parse(raw);
+    const hasAny = anon && anon.sections &&
+      Object.values(anon.sections).some(Boolean);
+    if (!hasAny) { localStorage.removeItem("longview-vault"); return; }
+    let perUser = null;
+    try { perUser = JSON.parse(localStorage.getItem(VAULT.key()) || "null"); } catch {}
+    const perHasAny = perUser && perUser.sections &&
+      Object.values(perUser.sections).some(Boolean);
+    if (!perHasAny) {
+      // the account is empty: push the anonymous file into it
+      await api("/api/vault", { method: "PUT", body: anon });
+    }
+    localStorage.removeItem("longview-vault");
+    VAULT.refresh();
+  } catch { /* leave the anonymous mirror alone */ }
+}
+
+async function doSignIn() {
+  const st = $("#auth-status");
+  st.className = "status";
+  st.textContent = "Signing in…";
+  const username = $("#auth-user").value.trim();
+  const password = $("#auth-pass").value;
+  try {
+    const d = await api("/api/auth/login", { method: "POST", body: { username, password } });
+    await onSignedIn(d.username);
+  } catch (e) {
+    st.className = "status error";
+    st.textContent = e.message;
+  }
+}
+
+async function doSignUp() {
+  const st = $("#auth-status");
+  st.className = "status";
+  st.textContent = "Creating the account…";
+  const username = $("#auth-user").value.trim();
+  const password = $("#auth-pass").value;
+  try {
+    const d = await api("/api/auth/signup", { method: "POST", body: { username, password } });
+    await onSignedIn(d.username);
+  } catch (e) {
+    st.className = "status error";
+    st.textContent = e.message;
+  }
+}
+
+async function doSignOut() {
+  try { await api("/api/auth/logout", { method: "POST" }); } catch { /* stay local anyway */ }
+  AUTH.username = null;
+  try {
+    Object.keys(localStorage)
+      .filter((k) => k.startsWith("longview-vault"))
+      .forEach((k) => localStorage.removeItem(k));
+  } catch {}
+  VAULT.data = null;
+  renderAccount();
+  vaultSummary();
+  const st = $("#auth-status");
+  if (st) { st.className = "status"; st.textContent = "Signed out. Your file stays on the host — sign back in any time."; }
+}
+
+function wireAccount() {
+  const loginBtn = $("#auth-login");
+  const upBtn = $("#auth-signup");
+  const outBtn = $("#auth-logout");
+  if (loginBtn) loginBtn.addEventListener("click", doSignIn);
+  if (upBtn) upBtn.addEventListener("click", doSignUp);
+  if (outBtn) outBtn.addEventListener("click", doSignOut);
+  const pass = $("#auth-pass");
+  if (pass) pass.addEventListener("keydown", (e) => { if (e.key === "Enter") doSignIn(); });
+}
+
 /* ---------------- boot ---------------- */
 wireScan();
 let _dirT;
@@ -4886,9 +5058,10 @@ $("#pf-add-first").addEventListener("click", () => {
   const q = $("#pf-q");
   if (q) { q.focus(); q.scrollIntoView({ block: "center", behavior: "smooth" }); }
 });
+wireAccount();
 wsRestoreAll();
 applyHash();
-VAULT.sync();   // the newer of the server file and this mirror wins
+AUTH.init().then(() => migrateAnonymousDataToAccount()).then(() => VAULT.sync());
 (async () => {
   try {
     await api("/api/strategies"); // warm cache
