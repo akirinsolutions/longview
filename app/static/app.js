@@ -1382,9 +1382,14 @@ function showLabTab() {
   empty.hidden = done;
   // Results live in memory only: after a refresh the inputs are saved but
   // the numbers are gone. Say so, and point at the run button.
-  empty.textContent = done
+  empty.innerHTML = done
     ? ""
-    : "No results here — run your strategy to see them. Results don't survive a refresh.";
+    : `<p class="lab-empty-title">Nothing to see yet.</p>
+       <p class="lab-empty-sub">Results live in memory — they don't survive a refresh. Run the plan in step 2 to see the numbers.</p>
+       <div class="lab-empty-actions">
+         <a class="btn primary" href="#lab/strategy">Start the strategy</a>
+         <a class="btn ghost" href="#lab/setup">Open setup</a>
+       </div>`;
   $("#lab-done").hidden = !done;
   if (done) {
     showPlanEcho(t.result);
@@ -1712,6 +1717,7 @@ async function loadMoney(statusText) {
       + ov.row_count.toLocaleString() + " holdings";
     $("#q-asof").textContent = ov.as_of ? `${ov.as_of} (quarter-end)` : "";
     renderCards(ov);
+    paintSideFresh(ov);
     renderRollups(ov);
     buildChips();
     buildAskChips();
@@ -1728,7 +1734,36 @@ async function loadMoney(statusText) {
     showMoneyTab();
 }
 
+/* one quiet line per fund card: when it filed, what changed this quarter */
+function fundFreshMeta(f) {
+  const parts = [];
+  if (f.filed) {
+    const d = new Date(f.filed);
+    parts.push("filed " + d.toLocaleDateString("en-US",
+      { month: "short", day: "numeric", year: "numeric" }));
+  }
+  if (f.n_new) parts.push(`<b class="up">${f.n_new} new</b>`);
+  if (f.n_exited) parts.push(`<b class="down">${f.n_exited} exited</b>`);
+  if (parts.length === 0 && f.as_of) parts.push("held steady");
+  return parts.join(" · ");
+}
+
 /* fund rows */
+/* the one-line freshness story in the Smart-money sidebar: how many
+   funds are stale, and how stale. Plain words, no chart. */
+function paintSideFresh(ov) {
+  const box = $("#side-fresh");
+  if (!box) return;
+  const funds = (ov && ov.funds) || [];
+  const stale = funds.filter((f) => f && f.stale);
+  if (!funds.length) { box.hidden = true; box.textContent = ""; return; }
+  const meta = [];
+  if (ov && ov.as_of) meta.push(`filings as of <b>${esc(ov.as_of)}</b>`);
+  if (stale.length) meta.push(`<b>${stale.length}</b> stale`);
+  box.hidden = false;
+  box.innerHTML = meta.join(" · ");
+}
+
 function renderCards(ov) {
   MF.fundNames = {};
   ov.funds.forEach((f) => (MF.fundNames[f.key] = f.name));
@@ -1736,12 +1771,17 @@ function renderCards(ov) {
     ? `<div class="fund err-card"><span class="fund-name"><strong>${esc(f.name)}</strong></span>
         <span class="fund-meta err" title="${esc(f.error)}">couldn't read</span></div>`
     : `<div class="fund" data-key="${esc(f.key)}">
-        <span class="fund-name"><strong>${esc(f.name)}</strong>
-          ${f.manager ? `<small>${esc(f.manager)}</small>` : ""}
-          ${f.stale ? `<span class="badge-stale" title="No new 13F for a while — old data">old data</span>` : ""}
-        </span>
-        <span class="fund-meta" title="as of ${esc(String(f.as_of || "").slice(5))}, quarter-end">${fmtBig(f.total_value)} · ${f.n_positions} holdings</span>
-        <button class="fund-remove" data-key="${esc(f.key)}" title="Remove" aria-label="Remove">×</button>
+        <div class="fund-top">
+          <span class="fund-name"><strong>${esc(f.name)}</strong>
+            ${f.manager ? `<small>${esc(f.manager)}</small>` : ""}
+            ${f.stale ? `<span class="badge-stale" title="No new 13F for a while — old data">old data</span>` : ""}
+          </span>
+          <button class="fund-remove" data-key="${esc(f.key)}" title="Remove" aria-label="Remove">×</button>
+        </div>
+        <div class="fund-bottom">
+          <span class="fund-meta" title="as of ${esc(String(f.as_of || "").slice(5))}, quarter-end">${fmtBig(f.total_value)} · ${f.n_positions} holdings</span>
+          <span class="fund-fresh">${fundFreshMeta(f)}</span>
+        </div>
       </div>`).join("");
   $("#f-crowd").max = Math.max(1, MF.total || 11);
   $$("#fund-grid .fund[data-key]").forEach((el) =>
@@ -1765,20 +1805,28 @@ function renderRollups(ov) {
   const item = (r) => `<div class="r-item"><span>${esc(tidy(r.issuer))}</span>
       <small>${esc(MF.fundNames[r.fund] || r.fund)}</small>
       <b class="${r.move_value == null ? "flat" : cls(r.move_value)}">${r.status === "new" ? "" : (r.move_value >= 0 ? "+" : "") + fmtBig(r.move_value == null ? 0 : r.move_value)}</b></div>`;
-  $("#rollup-new").innerHTML = (ov.new_this_quarter || []).slice(0, 3).map((r) =>
+  $("#rollup-new").innerHTML = (ov.new_this_quarter || []).slice(0, 5).map((r) =>
       `<div class="r-item"><span>${esc(tidy(r.issuer))}</span><small>${esc(MF.fundNames[r.fund] || r.fund)}</small>
        <b class="up">${fmtBig(r.value)}</b></div>`).join("")
     || `<p class="empty">Nothing new this quarter.</p>`;
-  $("#rollup-moves").innerHTML = (ov.biggest_moves || []).slice(0, 3).map(item).join("")
+  $("#rollup-moves").innerHTML = (ov.biggest_moves || []).slice(0, 5).map(item).join("")
     || `<p class="empty">No big moves.</p>`;
-  $("#rollup-crowd").innerHTML = (ov.crowding_change || []).slice(0, 3).map((c) =>
+  $("#rollup-crowd").innerHTML = (ov.crowding_change || []).slice(0, 5).map((c) =>
       `<div class="r-item"><span>${esc(tidy(c.name))}</span>
        <small>${c.funds_then.length} → ${c.funds_now.length} funds</small>
        <b class="${c.delta > 0 ? "up" : "down"}">${c.delta > 0 ? "+" : ""}${c.delta}</b></div>`).join("")
     || `<p class="empty">No shift this quarter.</p>`;
+  const exits = (ov.exits_this_quarter || [])
+    .filter((r) => (r.prev_value || 0) > 0)
+    .slice(0, 5);
+  $("#rollup-exits").innerHTML = exits.map((r) =>
+      `<div class="r-item"><span>${esc(tidy(r.issuer))}</span><small>${esc(MF.fundNames[r.fund] || r.fund)}</small>
+       <b class="down">was ${fmtBig(r.prev_value)}</b></div>`).join("")
+    || `<p class="empty">No exits this quarter.</p>`;
   reveal($("#rollup-new"));
   reveal($("#rollup-moves"));
   reveal($("#rollup-crowd"));
+  reveal($("#rollup-exits"));
 }
 
 /* the scan lede: what a row means (a holding, or a company) */
@@ -1877,7 +1925,7 @@ function renderScanTable(d) {
   const statusChip = (s) => `<span class="st ${stCls(s)}">${STATUS_WORD[s] || s}</span>`;
   tb.innerHTML = d.rows.map((r, i) => MF.agg ? `
     <tr class="agg-row ${r.surprise ? "surprise" : ""}" data-i="${i}">
-      <td class="co" title="${esc(r.cusip || "")}">${esc(tidy(r.issuer))}</td>
+      <td class="co" title="${esc(r.issuer)}"><span class="co-name">${esc(tidy(r.issuer))}</span></td>
       <td>${statusChip(r.status)}</td>
       <td class="num">${r.value > 0 ? fmtBig(r.value) : (r.prev_value ? `<span class="was" title="sold last quarter">was ${fmtBig(r.prev_value)}</span>` : "—")}</td>
       <td class="num ${cls(r.change)}">${r.status === "new" ? "new" : (r.change != null ? fmtSign(r.change, 0) : "—")}</td>
@@ -1885,8 +1933,8 @@ function renderScanTable(d) {
       <td class="act"><button class="snip-save" data-i="${i}" title="Save to your notes">Save</button></td>
     </tr>` : `
     <tr class="${r.surprise ? "surprise" : ""}"${r.surprise ? ` title="A new bet no other tracked fund shares"` : ""}>
-      <td class="co" title="${esc(r.cusip || "")}">${esc(tidy(r.issuer))}</td>
-      <td>${esc(MF.fundNames[r.fund] || r.fund)}</td>
+      <td class="co" title="${esc(r.issuer)}"><span class="co-name">${esc(tidy(r.issuer))}</span></td>
+      <td class="fund-name-cell" title="${esc(MF.fundNames[r.fund] || r.fund)}">${esc(MF.fundNames[r.fund] || r.fund)}</td>
       <td>${statusChip(r.status)}</td>
       <td class="num">${r.status === "exited" && r.prev_value ? `<span class="was" title="they sold this last quarter">was ${fmtBig(r.prev_value)}</span>` : fmtBig(r.value)}</td>
       <td class="num ${cls(r.change)}">${r.status === "new" ? "new" : fmtSign(r.change, 0)}</td>
@@ -2371,11 +2419,51 @@ function renderPortfolio(d) {
   if (!has) { $("#pf-total").innerHTML = ""; return; }
   paintPfTotal(d.totals);
   paintPfPeriods();
+  renderPfSpark(d);
   renderPfRows();
   $("#pf-cur-note").textContent = d.totals.n
     ? `${d.totals.priced}/${d.totals.n} priced`
       + (d.totals.missing ? ` · ${d.totals.missing} missing` : "")
     : "";
+}
+
+/* A quiet 1-year total-value line under the strip. Honest by
+   construction: the server only sends it when every priced holding has
+   a year of history, so the line is never a partial slice. */
+function renderPfSpark(d) {
+  const box = $("#pf-spark");
+  if (!box) return;
+  const pts = d.spark || [];
+  if (!pts.length || pts.length < 2) {
+    box.hidden = true;
+    box.innerHTML = "";
+    return;
+  }
+  const lo = Math.min(...pts.map((p) => p[1]));
+  const hi = Math.max(...pts.map((p) => p[1]));
+  const span = hi - lo || 1;
+  const W = 680, H = 52, padX = 4, padY = 6;
+  const x = (i) => padX + (i / (pts.length - 1)) * (W - 2 * padX);
+  const y = (v) => padY + (1 - (v - lo) / span) * (H - 2 * padY);
+  const line = pts.map((p, i) => `${x(i).toFixed(1)},${y(p[1]).toFixed(1)}`).join(" ");
+  const tcur = d.totals.currency || (d.totals.currencies.length === 1 ? d.totals.currencies[0] : "");
+  const first = pts[0][0], last = pts[pts.length - 1][0];
+  const dFmt = (s) => new Date(s + "T00:00:00").toLocaleDateString("en-US",
+    { month: "short", year: "2-digit" });
+  const up = hi >= lo;
+  const color = up ? "var(--up)" : "var(--down)";
+  box.hidden = false;
+  box.innerHTML = `
+    <div class="pf-spark-head">
+      <span class="dim">1-year total value</span>
+      <span class="dim">${dFmt(first)} → ${dFmt(last)}</span>
+    </div>
+    <svg class="pf-spark-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+      <polyline points="${line}" fill="none" stroke="${color}" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round"/>
+    </svg>
+    <div class="pf-spark-foot">
+      <span>${fmtBigCur(lo, tcur)}</span><span>${fmtBigCur(hi, tcur)}</span>
+    </div>`;
 }
 
 /* the top strip: what it's all worth, plus the gain for the chosen window */
@@ -2438,7 +2526,7 @@ function pfRowHtml(p, cur) {
     : p.price_stale ? `last seen ${p.price_as_of || "?"}` : "live";
   return `
     <tr data-t="${esc(p.ticker)}">
-      <td class="co">${esc(tidy(p.name))}
+      <td class="co" title="${esc(p.name)}"><span class="co-name">${esc(tidy(p.name))}</span>
         <small class="dim">${ident} · ${fmtShares(p.shares)} sh</small></td>
       <td class="num" title="${tip}">${price}${week}</td>
       <td class="num">${fmtMoneyCur(val("value"), rcur)}</td>
@@ -3148,9 +3236,11 @@ function renderCompany(c, sym, tab) {
       </div>
       <div class="pane-actions">
         <button class="btn ghost" id="co-save" type="button">Save to notes</button>
+        <button class="btn primary" id="co-add" type="button">Add to portfolio</button>
       </div>
     </div>
     ${avail ? "" : `<p class="status">Yahoo is busy right now — some numbers may be missing. Try again in a minute.</p>`}
+    <div id="co-extras" class="co-extras" hidden></div>
     <div class="co-hero">
       <div class="co-quote">
         <div class="co-price">${px(c.price)}</div>
@@ -3182,7 +3272,7 @@ function renderCompany(c, sym, tab) {
         ${stat("50-day average", px(c.ma50))}
         ${stat("200-day average", px(c.ma200))}
       </div>
-      <div class="co-card">
+      ${[c.revenue, c.employees, c.next_earnings, c.margins && (c.margins.gross ?? c.margins.operating ?? c.margins.net)].some((v) => v != null) ? `<div class="co-card">
         <h3>The business</h3>
         ${stat("Revenue", c.revenue == null ? dash : fmtBig(c.revenue))}
         ${stat("Gross margin", c.margins && c.margins.gross != null ? c.margins.gross.toFixed(0) + "%" : dash)}
@@ -3193,9 +3283,9 @@ function renderCompany(c, sym, tab) {
           ? new Date(c.next_earnings + "T00:00:00").toLocaleDateString("en-US",
               { month: "short", day: "numeric", year: "numeric" })
           : dash)}
-      </div>
+      </div>` : ""}
     </div>
-    ${coDcf(c, tab)}
+    ${(c.free_cash_flow != null && c.shares_outstanding != null ? coDcf(c, tab) : "")}
     ${c.about ? `<div class="co-card co-about">
         <h3>About</h3>
         <p>${esc(c.about)}</p>
@@ -3215,7 +3305,157 @@ function renderCompany(c, sym, tab) {
   });
   if (avail) drawCoChart(c);
   initDcf(c, tab);
+  wireCompanyFace(c, sym, name);
   reveal($("#co-body"));
+}
+
+/* ── Add to portfolio: a one-click form that reuses the same POST the
+      portfolio page uses. The cost prefills with the live price; the
+      rest is the user's to set. ── */
+function openCompanyAddForm(c, sym) {
+  closeCompanyAddForm();
+  const box = $("#co-body");
+  const pxPrice = c.price != null ? c.price.toFixed(2) : "";
+  const form = document.createElement("div");
+  form.id = "co-add-form";
+  form.className = "card co-add-form";
+  form.innerHTML = `
+    <div class="co-add-head"><strong>Add ${esc(sym)} to your portfolio</strong>
+      <button class="sheet-x" id="co-add-x" type="button" aria-label="Close">×</button></div>
+    <div class="co-add-row">
+      <label>Shares <input id="co-add-shares" type="number" min="0" step="any" placeholder="10" inputmode="decimal"></label>
+      <label>Cost per share <input id="co-add-cost" type="number" min="0" step="any" value="${esc(pxPrice)}" inputmode="decimal"></label>
+      <label>Bought <input id="co-add-date" type="date"></label>
+    </div>
+    <div class="co-add-row">
+      <label class="grow">Note <input id="co-add-note" maxlength="120" placeholder="optional"></label>
+    </div>
+    <div class="co-add-actions">
+      <button class="btn primary" id="co-add-go" type="button">Add</button>
+      <span class="dim co-add-hint">lands in <a href="#home/portfolio">My portfolio</a></span>
+    </div>
+    <p id="co-add-status" class="status"></p>`;
+  const head = box.querySelector(".pane-head");
+  head.insertAdjacentElement("afterend", form);
+  reveal(form);
+  const close = () => { form.remove(); };
+  $("#co-add-x").addEventListener("click", close);
+  $("#co-add-go").addEventListener("click", async () => {
+    const st = $("#co-add-status");
+    const shares = parseFloat($("#co-add-shares").value);
+    if (!isFinite(shares) || shares <= 0) {
+      st.className = "status error";
+      st.textContent = "Enter the number of shares.";
+      return;
+    }
+    const body = {
+      ticker: sym,
+      shares: shares,
+      cost_basis: parseFloat($("#co-add-cost").value) || 0,
+      purchase_date: $("#co-add-date").value || "",
+      note: $("#co-add-note").value.trim(),
+    };
+    st.className = "status";
+    st.textContent = "Adding…";
+    $("#co-add-go").disabled = true;
+    try {
+      await api("/api/portfolio", { method: "POST", body });
+      toast(`Added ${esc(sym)} to your portfolio`);
+      close();
+      loadCoExtras(c, sym, c.name || sym);
+    } catch (e) {
+      st.className = "status error";
+      st.textContent = e.message;
+      $("#co-add-go").disabled = false;
+    }
+  });
+  $("#co-add-shares").focus();
+}
+function closeCompanyAddForm() {
+  const f = $("#co-add-form");
+  if (f) f.remove();
+}
+
+/* ── The two quiet strips: who already holds this (smart money), and
+      how much of the portfolio it already is (the reader's own). ── */
+let _coExtrasSeq = 0;
+async function loadCoExtras(c, sym, name) {
+  const box = $("#co-extras");
+  if (!box) return;
+  const my = ++_coExtrasSeq;
+  const alive = () => my === _coExtrasSeq && box.isConnected;
+  const strip = document.createElement("div");
+  strip.className = "co-strip";
+  strip.innerHTML = `<span class="co-strip-k">Smart money</span>
+    <span class="co-strip-v dim">Reading the funds…</span>`;
+  box.hidden = false;
+  box.innerHTML = "";
+  box.appendChild(strip);
+  let fundsStrip = null;
+  try {
+    let s = null;
+    try {
+      s = await api("/api/money/security?name=" + encodeURIComponent(name));
+    } catch (e) {
+      // truncated filings often spell the issuer differently; try the symbol
+      if (sym && String(sym).toUpperCase() !== "?") {
+        s = await api("/api/money/security?name=" + encodeURIComponent(sym));
+      } else { throw e; }
+    }
+    let ovNames = Object.fromEntries(
+      (window._money && window._money.funds || []).map((f) => [f.key, f.name]));
+    if (!Object.keys(ovNames).length) {
+      try {
+        const ov = await api("/api/funds");
+        ovNames = Object.fromEntries((ov.funds || []).map((f) => [f.key, f.name]));
+      } catch { /* raw keys are a fine fallback */ }
+    }
+    if (!alive()) return;
+    const names = s.funds.map((k) => ovNames[k] || k);
+    const list = names.slice(0, 4).join(" · ") + (names.length > 4 ? ` +${names.length - 4} more` : "");
+    fundsStrip = `<h3>Smart money</h3>
+      <p class="co-strip-v"><b>${s.n_funds}</b> fund${s.n_funds === 1 ? "" : "s"} hold this — ${esc(list)}${s.total_value ? ` · <b>${fmtBig(s.total_value)}</b> combined` : ""}</p>
+      <a class="linklike" href="#money/scan">Open the scan →</a>`;
+  } catch {
+    fundsStrip = `<h3>Smart money</h3><p class="co-strip-v dim">None of the tracked funds report a position in this.</p>`;
+  }
+  if (!alive()) return;
+  strip.innerHTML = fundsStrip;
+  // the reader's own position — with the chosen display currency so a
+  // mixed-currency portfolio still yields one percentage
+  try {
+    const cur = (function () { try { return localStorage.getItem("proof-cur") || ""; } catch { return ""; } })();
+    const d = await api("/api/portfolio" + (cur ? "?currency=" + encodeURIComponent(cur) : ""));
+    const held = (d.positions || []).filter((p) => {
+      const t = (p.ticker || "").toUpperCase();
+      const n = tidy(p.name || "").toLowerCase();
+      return t === String(sym).toUpperCase()
+        || (name && tidy(name).toLowerCase() === n);
+    });
+    if (held.length) {
+      const shares = held.reduce((a, p) => a + (p.shares || 0), 0);
+      const value = held.reduce((a, p) => a + ((cur ? p.display_value : p.value) || 0), 0);
+      const total = d.totals.value;
+      const share = total ? (value / total) : null;
+      const curShown = cur || held[0].currency || "";
+      const own = document.createElement("div");
+      own.className = "co-strip co-own";
+      own.innerHTML = `<h3>You own this</h3>
+        <p class="co-strip-v">${fmtShares(shares)} sh · <b>${fmtMoneyCur(value, curShown)}</b>${share != null ? ` · <b>${(share * 100).toFixed(1)}%</b> of your portfolio` : ""}</p>`;
+      if (alive()) box.appendChild(own);
+    } else {
+      const own = document.createElement("div");
+      own.className = "co-strip co-own dim";
+      own.innerHTML = `<h3>You own this</h3><p class="co-strip-v">Nothing yet — the <a href="#home/portfolio">Add to portfolio</a> button above drops it in.</p>`;
+      if (alive()) box.appendChild(own);
+    }
+  } catch { /* the strip stays quiet */ }
+}
+
+function wireCompanyFace(c, sym, name) {
+  const addBtn = $("#co-add");
+  if (addBtn) addBtn.addEventListener("click", () => openCompanyAddForm(c, sym));
+  loadCoExtras(c, sym, name);
 }
 
 function coDcf(c, tab) {
@@ -3468,7 +3708,7 @@ function renderRisk(d) {
   $("#rm-empty").hidden = has;
   $("#rm-table-card").hidden = !has;
   $("#rm-total").hidden = !has;
-  if (!has) { $("#rm-total").innerHTML = ""; return; }
+  if (!has) { $("#rm-total").innerHTML = ""; const n = $("#rm-note"); if (n) { n.hidden = true; n.textContent = ""; } return; }
   $("#rm-cur").value = PF_CURRENCIES.includes(RM.cur) ? RM.cur : "";
   renderRmRows();
   paintRmStrip();
@@ -3551,6 +3791,28 @@ function paintRmStrip() {
     + (T.vol != null ? ` <span class="dim">· typical swing ${fmtSign(T.vol)}</span>` : "")
     + (mixed ? ` <span class="dim">your holdings span ${esc(T.currencies.join(" · "))} — pick a currency above to convert</span>`
               : (why ? ` <span class="dim">${T.priced}/${T.n} priced</span>` : ""));
+  paintRmNote();
+}
+
+/* One quiet line when one holding dominates: the concentration is the
+   most important risk the desk can flag in a glance. */
+function paintRmNote() {
+  const box = $("#rm-note");
+  if (!box) return;
+  const positions = RM.data && RM.data.positions ? RM.data.positions : [];
+  const rows = positions.filter((p) => rmRowValues(p).value != null);
+  const total = rows.reduce((a, p) => a + rmRowValues(p).value, 0);
+  if (!rows.length || total <= 0) { box.hidden = true; box.textContent = ""; return; }
+  let top = rows[0], topVal = rmRowValues(rows[0]).value;
+  for (const p of rows) {
+    const v = rmRowValues(p).value;
+    if (v > topVal) { top = p; topVal = v; }
+  }
+  const share = topVal / total;
+  if (share < 0.4) { box.hidden = true; box.textContent = ""; return; }
+  const tick = top.ticker || "that holding";
+  box.hidden = false;
+  box.innerHTML = `<b>Concentrated.</b> ${esc(tidy(top.name || tick))} is <b>${(share * 100).toFixed(1)}%</b> of this portfolio — a 10% move in it moves the whole thing ~${(share * 10).toFixed(1)}%.`;
 }
 
 function rmTip(p) {
@@ -3565,7 +3827,7 @@ function rmRowHtml(p, i) {
   const week = p.week == null ? "" : ` <small class="${cls(p.week)}">${fmtSign(p.week)}</small>`;
   return `
     <tr data-t="${esc(p.ticker)}" data-i="${i}">
-      <td class="co">${esc(tidy(p.name))}
+      <td class="co" title="${esc(p.name)}"><span class="co-name">${esc(tidy(p.name))}</span>
         <small class="dim">${esc(p.ticker)}${p.kind === "custom" ? " · custom" : ""}</small></td>
       <td class="num" title="${esc(rmTip(p))}">${fmtPrice(val("price"), rcur)}${week}</td>
       <td class="num">${fmtMoneyCur(val("value"), rcur)}</td>
@@ -4172,12 +4434,14 @@ function renderEconomy() {
       <span class="dim">in ${H} years · ${gainPct >= 0 ? "+" : ""}${gainPct.toFixed(0)}% total · at ${node.g.toFixed(1)}%/yr</span>
     </div>
     ${kids.length ? `<div class="eco-chartwrap">
-      <div class="eco-donut">
+      <div class="eco-donut-col">
+        <div class="eco-donut">
         <svg class="eco-donutsvg" viewBox="0 0 240 240" aria-hidden="true"></svg>
         <div class="eco-center">
           <div class="eco-center-big">${esc(node.value_label)}</div>
           <div class="eco-center-small">${node.level === 0
             ? "global household wealth" : node.share_of_total + "% of all"}</div>
+        </div>
         </div>
       </div>
       <div class="eco-legend">${head}${rows}</div>

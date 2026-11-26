@@ -493,6 +493,7 @@ def money_overview(refresh: bool = False):
         "new_this_quarter": pool["new_this_quarter"],
         "biggest_moves": pool["biggest_moves"],
         "crowding_change": pool["crowding_change"],
+        "exits_this_quarter": pool.get("exits_this_quarter") or [],
         "n_ok": sum(1 for f in pool["funds"] if "error" not in f),
         "n_total": len(pool["funds"]),
         "row_count": len(pool["rows"]),

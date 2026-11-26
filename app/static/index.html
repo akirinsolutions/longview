@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Longview</title>
-<link rel="stylesheet" href="/static/style.css?v=45">
+<link rel="icon" href="/static/favicon.svg?v=1" type="image/svg+xml">
+<link rel="stylesheet" href="/static/style.css?v=47">
 </head>
 <body class="at-landing">
 <div id="landing">
@@ -105,6 +106,7 @@ open  http://127.0.0.1:8010</pre>
     <a class="nav" data-route="money/quarter" href="#money/quarter">This quarter</a>
     <a class="nav" data-route="money/scan" href="#money/scan">Holdings</a>
     <a class="nav" data-route="money/ask" href="#money/ask">Ask</a>
+    <p id="side-fresh" class="side-fresh" hidden></p>
   </nav>
   <nav class="nav-group">
     <div class="group-label">Backtest lab</div>
@@ -135,6 +137,7 @@ open  http://127.0.0.1:8010</pre>
       <p class="lede">Add what you own. Prices come from Yahoo.</p>
       <p id="pf-status" class="status"></p>
       <p id="pf-total" class="pf-total" hidden></p>
+      <div id="pf-spark" class="pf-spark" hidden></div>
 
       <div class="card">
         <div class="pf-mode" role="group" aria-label="Holding type">
@@ -274,6 +277,7 @@ open  http://127.0.0.1:8010</pre>
     <p class="lede">What each holding might move, and what the portfolio becomes. Type a move, or let the model suggest one.</p>
     <p id="rm-status" class="status"></p>
     <p id="rm-total" class="rm-total" hidden></p>
+    <p id="rm-note" class="rm-note" hidden></p>
 
     <div class="card table-card" id="rm-table-card" hidden>
       <div class="pf-toolbar rm-toolbar">
@@ -593,9 +597,10 @@ python -m venv .venv
     <div id="sub-quarter" class="subpane">
       <p class="lede">What your funds changed, last reported quarter <small id="q-asof" class="dim"></small></p>
       <div class="quarter-grid">
-        <div class="card"><h3>New bets</h3><p class="tcap">Brand-new positions.</p><div id="rollup-new"></div></div>
+        <div class="card"><h3>New bets</h3><p class="tcap">Brand-new positions this quarter.</p><div id="rollup-new"></div></div>
         <div class="card"><h3>Biggest moves</h3><p class="tcap">Largest changes in shares.</p><div id="rollup-moves"></div></div>
-        <div class="card"><h3>Crowding</h3><p class="tcap">Held by the most funds.</p><div id="rollup-crowd"></div></div>
+        <div class="card"><h3>Crowding</h3><p class="tcap">Held by the most funds, and how it shifted.</p><div id="rollup-crowd"></div></div>
+        <div class="card"><h3>Biggest exits</h3><p class="tcap">Positions funds sold this quarter.</p><div id="rollup-exits"></div></div>
       </div>
     </div>
 
@@ -741,6 +746,6 @@ python -m venv .venv
   </div>
 </div>
 <script src="/static/dcf.js?v=37"></script>
-<script src="/static/app.js?v=45"></script>
+<script src="/static/app.js?v=47"></script>
 </body>
 </html>

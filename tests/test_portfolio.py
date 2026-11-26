@@ -550,3 +550,64 @@ def test_glance_highlights_aggregate():
 def test_glance_empty_pool_is_fine():
     g = portfolio.glance(_pool())
     assert g["crowded"] == [] and g["moves"] == [] and g["new"] == []
+
+
+def _hist_many():
+    # A full-year history with a mid-year gap (like exchange holidays):
+    # without last-known-or-before the total would dip to one name's value.
+    from datetime import date as _d, timedelta as _td
+    end = _d(2026, 11, 25)
+    out = {}
+    for i in range(399, -1, -1):
+        d = end - _td(days=i)
+        if i in (10, 11, 47, 48, 49):   # a short stretch of no bars
+            continue
+        out[d.isoformat()] = round(100.0 + (400 - i) * 0.05, 4)
+    return out
+
+
+def test_view_spark_smooths_holiday_gaps(portfolio_path, monkeypatch):
+    portfolio.add_position(_pos(shares=10, cost=120.0))
+    monkeypatch.setattr(
+        market_data, "quote",
+        lambda sym, ttl, name_hint=None: _quote(sym, price=150.0))
+    monkeypatch.setattr(market_data, "price_series",
+                        lambda sym, days: _hist_many())
+    monkeypatch.setattr(funds, "scan_pool", lambda refresh=False: _pool())
+    v = portfolio.view()
+    spark = v["spark"]
+    assert len(spark) >= 2
+    vals = [x[1] for x in spark]
+    # every point is the whole position's value — never one name alone
+    assert min(vals) >= 10 * 100.0      # floor: 10 shares at ~100, not a dip
+    assert max(vals) <= 10 * 130.0
+    # the series trends upward over the year
+    assert vals[-1] > vals[0]
+
+
+def test_view_spark_absent_for_custom_holdings(portfolio_path, monkeypatch):
+    portfolio.add_position(_pos("CUSTOM-1", "My fund", kind="custom",
+                                price=20.0, currency="USD", shares=5,
+                                cost=18.0))
+    monkeypatch.setattr(
+        market_data, "quote",
+        lambda sym, ttl, name_hint=None: None)
+    monkeypatch.setattr(funds, "scan_pool", lambda refresh=False: _pool())
+    v = portfolio.view()
+    assert v["spark"] == []     # no honest line from a custom holding
+
+
+def test_view_spark_absent_for_mixed_native_currencies(portfolio_path,
+                                                      monkeypatch):
+    portfolio.add_position(_pos(shares=10, cost=120.0))
+    portfolio.add_position(_pos("SAP", "SAP SE", shares=5, cost=300.0))
+    monkeypatch.setattr(
+        market_data, "quote",
+        lambda sym, ttl, name_hint=None: _quote(
+            sym, price=150.0 if sym == "AAPL" else 400.0,
+            cur="USD" if sym == "AAPL" else "EUR"))
+    monkeypatch.setattr(market_data, "price_series",
+                        lambda sym, days: _hist_many())
+    monkeypatch.setattr(funds, "scan_pool", lambda refresh=False: _pool())
+    v = portfolio.view()
+    assert v["spark"] == []     # $ + € doesn't add up

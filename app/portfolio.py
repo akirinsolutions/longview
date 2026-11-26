@@ -361,6 +361,66 @@ def _interval_stats(history: dict[str, float] | None, shares: float) -> dict:
     return out
 
 
+
+def _spark_series(positions: list[dict], hists: list, display: str) -> list:
+    """A quiet year of portfolio value, for the Home sparkline.
+
+    Every position that can be charted must be priced and carry a last-
+    year history; custom holdings (no exchange history) and blocked
+    quotes (no history) are not charted at all — a partial line that
+    reads as "the portfolio" would be a lie. Returns [date, value]
+    points in the display currency (or the single native currency),
+    downsampled to ~150 points. Empty list when it cannot be charted
+    honestly.
+    """
+    if not positions:
+        return []
+    if any((p.get("kind") or "stock") == "custom" for p in positions):
+        return []
+
+    def last_close(history: dict[str, float], date: str) -> float | None:
+        """A holding's unchanged price on ``date``: its last close on or
+        before it — exchanges differ (holidays, Tokyo), so a close on the
+        calendar day is not guaranteed for every name."""
+        dates = sorted(history)
+        best = None
+        for d in dates:
+            if d > date:
+                break
+            best = d
+        return history[best] if best else None
+
+    usable = []
+    for p, h in zip(positions, hists):
+        fx = p.get("fx") if display else None
+        if not h:
+            return []
+        if display and not fx:
+            return []
+        if not display:
+            pass  # single-currency check done below
+        usable.append((p["shares"] * (fx if fx else 1.0), h))
+    if not display:
+        currencies = {p.get("currency") for p in positions if p.get("currency")}
+        if len(currencies) > 1:
+            return []
+    if not usable:
+        return []
+    dates = sorted({d for _, h in usable for d in h})
+    if len(dates) < 2:
+        return []
+    totals: dict[str, float] = {}
+    for d in dates:
+        total = 0.0
+        for weighted_shares, h in usable:
+            px = last_close(h, d)
+            if px is None:
+                continue
+            total += weighted_shares * px
+        totals[d] = total
+    step = max(1, len(dates) // 150)
+    return [[d, round(totals[d], 2)] for d in dates[::step]]
+
 def _history_for(p: dict, q: dict | None) -> dict[str, float] | None:
     """A year of daily closes for one position, for the interval gains.
 
@@ -563,6 +623,7 @@ def view(refresh: bool = False, currency: str = "") -> dict:
     return {
         "positions": positions,
         "totals": totals,
+        "spark": _spark_series(positions, hists, display),
         "n_live": sum(1 for p in positions if p["live"]),
         "as_of_13f": (pool or {}).get("as_of"),
         "n_funds_13f": len((pool or {}).get("funds") or []),

@@ -868,7 +868,7 @@ def ask_data(quarters: int = 1, roster: list[dict] | None = None) -> dict:
 # every filing we need is already cached).
 # ---------------------------------------------------------------------------
 
-_SCAN_VERSION = 2   # v2: cover-page periods; amendment-aware diff pairing
+_SCAN_VERSION = 3   # v3: exits_this_quarter alongside new/moves/crowding
 _VIEW_VERSION = 4   # v4: corrected manager labels (code-owned metadata)
 
 
@@ -1026,6 +1026,10 @@ def _build_pool() -> dict:
             })
     crowding_change.sort(key=lambda c: (-abs(c["delta"]), -c["value"]))
 
+    exits = [r for r in rows
+             if r["status"] == "exited" and (r.get("prev_value") or 0) > 0]
+    exits.sort(key=lambda r: -(r.get("prev_value") or 0))
+
     return {
         "v": _SCAN_VERSION,
         "roster": roster_fingerprint(),
@@ -1036,6 +1040,7 @@ def _build_pool() -> dict:
         "new_this_quarter": new_rows[:15],
         "biggest_moves": moves[:15],
         "crowding_change": crowding_change[:25],
+        "exits_this_quarter": exits[:15],
     }
 
 
@@ -1248,10 +1253,13 @@ def security_view(query: str, pool: dict | None = None) -> dict:
     q = (query or "").strip()
     if not q:
         raise ValueError("Type a company name or a CUSIP first")
-    ql = q.lower()
+    def _norm(s):
+        return "".join(ch for ch in str(s).lower() if ch.isalnum())
+    ql = _norm(q)
     matches = [r for r in pool["rows"]
-               if ql in r["issuer"].lower()
-               or (r.get("cusip") and ql in r.get("cusip", "").lower())]
+               if (ql in _norm(r["issuer"])
+                   or _norm(r["issuer"]) in ql
+                   or (r.get("cusip") and ql in _norm(r.get("cusip", ""))))]
     if not matches:
         raise LookupError(f"None of the tracked funds show a position "
                           f"matching '{q}' in their latest 13F")
